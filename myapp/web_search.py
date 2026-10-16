@@ -23,6 +23,7 @@ import logging
 import re
 
 import requests
+from urllib.parse import urlsplit
 from django.conf import settings
 from django.core.cache import cache
 
@@ -31,7 +32,7 @@ logger = logging.getLogger(__name__)
 # Kept short on purpose: this runs before the model is even called, so it is
 # added latency on every searched turn. A slow search is worse than no search.
 SEARCH_TIMEOUT_SECONDS = 4
-MAX_RESULTS = 4
+MAX_RESULTS = 6
 # Enough for the model to extract a fact and cite a source, short enough that
 # five of them don't crowd out the actual conversation in the context window.
 MAX_SNIPPET_CHARS = 320
@@ -165,6 +166,20 @@ def needs_search(text):
     return bool(_RECENT_YEAR_RE.search(text) and '?' in text)
 
 
+# Tavily's own status codes for a key that has run out, in plain words.
+_TAVILY_LIMITS = {
+    432: ("Tavily says this key has used up its plan's searches for now (usage limit reached). "
+          'Paste a new Tavily key, or upgrade the plan at app.tavily.com, then save.'),
+    433: ('Tavily says this key reached its pay-as-you-go spending limit. Raise the limit at '
+          'app.tavily.com or paste a different key, then save.'),
+}
+
+
+def explain_status(status_code):
+    """An everyday-words reason for a Tavily error code, or ''."""
+    return _TAVILY_LIMITS.get(status_code, '')
+
+
 def search(query, max_results=MAX_RESULTS, *, deep=False):
     """Return ``[{title, url, snippet}, ...]``, or ``[]`` on any failure.
 
@@ -209,6 +224,7 @@ def search(query, max_results=MAX_RESULTS, *, deep=False):
                     'max_results': max_results,
                     'include_answer': False,
                     'include_raw_content': False,
+                    'include_favicon': True,
                 },
                 timeout=timeout,
             )
@@ -216,7 +232,8 @@ def search(query, max_results=MAX_RESULTS, *, deep=False):
             raw = response.json().get('results', [])
         except (requests.RequestException, ValueError, TypeError) as exc:
             logger.warning('Tavily search failed for %r: %s', query[:80], exc)
-            model_controls.record_error(SEARCH_CONTROL_KEY, f'{exc.__class__.__name__}: {exc}')
+            status = getattr(getattr(exc, 'response', None), 'status_code', None)
+            model_controls.record_error(SEARCH_CONTROL_KEY, explain_status(status) or f'{exc.__class__.__name__}: {exc}')
             return []
     else:
         # Keep local/test environments usable when no Tavily key is supplied.
@@ -241,7 +258,11 @@ def search(query, max_results=MAX_RESULTS, *, deep=False):
             (item.get('content') or item.get('body') or '').split()
         )[:snippet_chars]
         if title and url:
-            results.append({'title': title, 'url': url, 'snippet': snippet})
+            results.append({
+                'title': title, 'url': url, 'snippet': snippet,
+                'favicon': (item.get('favicon') or '').strip() if str(item.get('favicon') or '').startswith('https://') else '',
+                'published': (item.get('published_date') or '').strip()[:40],
+            })
 
     model_controls.record_success(SEARCH_CONTROL_KEY)
     cache.set(cache_key, results, CACHE_SECONDS)
@@ -267,6 +288,8 @@ def test_connection():
         return False, 'Tavily rejected this API key as invalid or not permitted.'
     if response.status_code == 429:
         return True, 'Key accepted, but Tavily is rate-limiting or the quota is used up right now.'
+    if explain_status(response.status_code):
+        return False, explain_status(response.status_code)
     if not response.ok:
         return False, f'Tavily returned HTTP {response.status_code}.'
     return True, 'Working — Tavily returned search results.'
@@ -278,18 +301,46 @@ def build_context(query, max_results=MAX_RESULTS):
     The caller passes this straight to ai_chat.stream_chat as
     ``retrieved_context`` with ``retrieved_source='web_search'``.
     """
+    return build_context_with_sources(query, max_results)[0]
+
+
+def public_sources(results):
+    """The results as the chat page shows them under a reply: title, link,
+    site name and icon — never the snippet text."""
+    sources = []
+    for result in results:
+        site = urlsplit(result['url']).netloc.lower().removeprefix('www.')
+        if not site or not result['url'].startswith(('https://', 'http://')):
+            continue
+        sources.append({'title': result['title'][:140], 'url': result['url'][:500], 'site': site[:80],
+                        'favicon': result.get('favicon', '')[:300], 'published': result.get('published', '')})
+    return sources
+
+
+def build_context_with_sources(query, max_results=MAX_RESULTS):
+    """(grounding text, sources for the page), or (None, []) without results."""
     results = search(query, max_results=max_results)
     if not results:
-        return None
+        return None, []
+    return _format_context(results), public_sources(results)
+
+
+def _format_context(results):
 
     lines = []
     for index, result in enumerate(results, start=1):
-        lines.append(f"[{index}] {result['title']}\n{result['url']}\n{result['snippet']}")
+        site = urlsplit(result['url']).netloc.lower().removeprefix('www.')
+        dated = f" (published {result['published']})" if result.get('published') else ''
+        lines.append(f"[{index}] {result['title']} — {site}{dated}\n{result['url']}\n{result['snippet']}")
     return (
         'LIVE WEB RESULTS (fetched just now for this question):\n\n'
         + '\n\n'.join(lines)
-        + '\n\nUse these for any fact that depends on current information, and '
-        'link a source you actually used with its exact URL above. If they do '
-        "not actually answer the question, say so rather than guessing — and "
-        'never invent a result, URL, date, or figure that is not shown here.'
+        + '\n\nUse these for any fact that depends on current information. Give a full, '
+        'well-organised answer that brings together what the different results say. '
+        'Right after each fact you took from a result, cite it inline as a markdown link '
+        'named after the site, e.g. ([reuters.com](https://www.reuters.com/...)), using the '
+        'exact URL shown above. Do not add a separate "Sources" list at the end — the app '
+        'shows the sources under your reply. If the results do not actually answer the '
+        "question, say so rather than guessing — and never invent a result, URL, date, or "
+        'figure that is not shown here.'
     )

@@ -48,8 +48,9 @@ class CustomModelsMiddleware:
 
     def __call__(self, request):
         if request.path.startswith(self.PREFIXES):
-            from myapp import custom_models
+            from myapp import ai_chat, custom_models
             custom_models.sync()
+            ai_chat.apply_model_id_overrides()
         return self.get_response(request)
 
 

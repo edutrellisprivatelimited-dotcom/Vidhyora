@@ -94,12 +94,14 @@ urlpatterns = [
     path('AI/api/transcribe/', views.ai_transcribe_audio, name='ai_transcribe_audio'),
     path('AI/api/youtube/start/', views.ai_youtube_start, name='ai_youtube_start'),
     path('AI/api/youtube/<uuid:token>/status/', views.ai_youtube_status, name='ai_youtube_status'),
+    path('AI/api/video/<uuid:token>/', views.ai_video_status, name='ai_video_status'),
     path('AI/api/youtube/<uuid:token>/file/<str:file_kind>/', views.ai_youtube_file, name='ai_youtube_file'),
     path('AI/api/conversations/', views.ai_conversations_list, name='ai_conversations_list'),
     path('AI/api/conversations/export/<str:file_format>/', views.ai_conversations_export_all, name='ai_conversations_export_all'),
     path('AI/api/conversations/<int:conversation_id>/', views.ai_conversation_messages, name='ai_conversation_messages'),
     path('AI/api/conversations/<int:conversation_id>/delete/', views.ai_conversation_delete, name='ai_conversation_delete'),
     path('AI/api/conversations/<int:conversation_id>/export/<str:file_format>/', views.ai_conversation_export, name='ai_conversation_export'),
+    path('AI/api/messages/<int:message_id>/export/<str:file_format>/', views.ai_message_export, name='ai_message_export'),
     path('AI/api/notes/', views.ai_notes_list, name='ai_notes_list'),
     path('AI/api/notes/create/', views.ai_note_create, name='ai_note_create'),
     path('AI/api/notes/<int:note_id>/update/', views.ai_note_update, name='ai_note_update'),
@@ -116,6 +118,7 @@ urlpatterns = [
     path('AI/api/calls/<int:pk>/delete/', ai_calls.delete, name='ai_call_delete'),
     path('AI/api/report/', views.ai_report_submit, name='ai_report_submit'),
     path('AI/api/developer-key/generate/', views.ai_developer_key_generate, name='ai_developer_key_generate'),
+    path('AI/api/developer-key/request-access/', views.ai_api_access_request, name='ai_api_access_request'),
 
     # Public developer API — a granted user's own code calling their
     # allowed models directly, authenticated by AIAPIKey (Authorization:

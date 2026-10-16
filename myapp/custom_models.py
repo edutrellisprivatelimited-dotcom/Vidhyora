@@ -337,9 +337,10 @@ def sync(force=False):
         return
     try:
         from myapp.models import CustomAIModel
-        rows = list(CustomAIModel.objects.all())
+        rows = list(CustomAIModel.objects.filter(kind=CustomAIModel.KIND_CHAT))
     except Exception:
         return
+    # Image and video models are not picker entries; see myapp.media_models.
     wanted = {row.model_key: _config(row) for row in rows}
     for key in [k for k in ai_chat.MODELS if is_custom(k) and k not in wanted]:
         del ai_chat.MODELS[key]

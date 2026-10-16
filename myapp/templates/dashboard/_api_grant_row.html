@@ -5,8 +5,15 @@
     {% for label in grant.model_label_list %}<span class="badge api-model">{{ label }}</span>{% endfor %}
   </td>
   <td>
-    {% if grant.user.ai_api_key %}<span class="badge api-key-active">Key generated</span>
+    {% if grant.user.ai_api_key %}<span class="badge api-key-active">Key generated</span><br>
+      <small class="api-row-sub">{{ grant.user.ai_api_key.key_prefix }}&hellip; &middot; made {{ grant.user.ai_api_key.created_at|date:"d M Y" }}</small>
     {% else %}<span class="badge api-key-none">No key yet</span>{% endif %}
+  </td>
+  <td>
+    {% if grant.user.ai_api_key %}
+      {{ grant.user.ai_api_key.request_count }} request{{ grant.user.ai_api_key.request_count|pluralize }}<br>
+      <small class="api-row-sub">{% if grant.user.ai_api_key.last_used_at %}last used {{ grant.user.ai_api_key.last_used_at|date:"d M Y, h:i A" }}{% else %}never used{% endif %}</small>
+    {% else %}&mdash;{% endif %}
   </td>
   <td>{{ grant.updated_at|date:"d M Y, h:i A" }}</td>
   <td>

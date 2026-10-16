@@ -107,13 +107,14 @@ details[open] > .api-sum{border-bottom:1px solid var(--line)}
 <details class="panel api-panel api-add" id="panel-add"{% if add_result and not add_result.ok %} open{% endif %}>
   <summary class="api-sum">
     <span class="api-sum-icon"><i class="fas fa-plus"></i></span>
-    <span class="api-sum-text"><h3>Add a new model</h3><small>Any NVIDIA NIM chat model (Nemotron, Llama, GPT-OSS…) or another OpenAI-compatible API</small></span>
+    <span class="api-sum-text"><h3>Add a new model</h3><small>A chat, image or video model from NVIDIA NIM (Nemotron, Llama, FLUX, Cosmos…), or a chat model from another OpenAI-compatible API</small></span>
     <span class="api-chevron"><i class="fas fa-chevron-down"></i></span>
   </summary>
   <div class="gem-body">
     <p class="api-help">
       On <a href="https://build.nvidia.com/models" target="_blank" rel="noopener">build.nvidia.com/models</a>, open a model with a <b>Free Endpoint</b>, then copy its name (or just the page link) and your API key from “Get API Key”.
-      Before the model is added it is checked live: the key, that the name exists, that it is a chat model, that it answers and streams, and whether it can read images. Nothing is saved unless it works.
+      Before the model is added it is checked live — for a chat model: the key, that the name exists, that it answers and streams, and whether it can read images; for an image or video model: that NVIDIA hosts it for your key and that it really makes a test picture or video. Nothing is saved unless it works.
+      An added image model makes every picture (FLUX takes over if it fails); an added video model lets people ask for a video in chat.
     </p>
     {% if add_result and not add_result.ok %}
     <div class="save-msg error"><i class="fas fa-circle-exclamation"></i> {{ add_result.message }}</div>
@@ -139,6 +140,13 @@ details[open] > .api-sum{border-bottom:1px solid var(--line)}
           <label for="id_base_url">API address</label>
           <input type="url" id="id_base_url" name="base_url" value="{{ add_result.values.base_url|default:'' }}" placeholder="https://api.example.com/v1">
         </div>
+      </div>
+      <div class="api-field gem-text-field">
+        <label for="id_kind">What does it make?</label>
+        <select id="id_kind" name="kind">
+          <option value="auto"{% if not add_result.values.kind or add_result.values.kind == 'auto' %} selected{% endif %}>Work it out from the model name</option>
+          {% for value, label in model_kinds %}<option value="{{ value }}"{% if add_result.values.kind == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
       </div>
       <div class="api-field gem-text-field">
         <label for="id_model_id">Model name</label>
@@ -197,8 +205,13 @@ details[open] > .api-sum{border-bottom:1px solid var(--line)}
     <div class="api-chips">
       <span class="api-chip"><i class="fas fa-microchip"></i> {{ panel.custom.model_id }}</span>
       <span class="api-chip"><i class="fas fa-plug"></i> {{ panel.custom.get_api_type_display }}</span>
+      {% if panel.custom.kind == 'chat' %}
       <span class="api-chip"><i class="fas {% if panel.custom.vision %}fa-image{% else %}fa-font{% endif %}"></i> {% if panel.custom.vision %}Reads images{% else %}Text only{% endif %}</span>
       {% if panel.custom.thinking_control %}<span class="api-chip"><i class="fas fa-brain"></i> Thinking hidden</span>{% endif %}
+      {% else %}
+      <span class="api-chip"><i class="fas {% if panel.custom.kind == 'video' %}fa-film{% else %}fa-palette{% endif %}"></i> {{ panel.custom.get_kind_display }}</span>
+      <span class="api-chip"><i class="fas {% if panel.enabled and panel.custom.is_active %}fa-circle-play{% else %}fa-circle-pause{% endif %}"></i> {% if panel.enabled and panel.custom.is_active %}In use{% else %}Not in use{% endif %}</span>
+      {% endif %}
     </div>
     {% if panel.custom.check_report %}
     <ul class="api-checks">
@@ -243,7 +256,7 @@ details[open] > .api-sum{border-bottom:1px solid var(--line)}
           {% if ident.values %}<span class="badge api-custom">Custom identity</span>{% else %}<span class="api-identity-default">Built-in answers</span>{% endif %}
           <i class="fas fa-chevron-down api-identity-chev"></i>
         </summary>
-        <p class="api-identity-help">What it answers to “Who are you?”, “Who made / trained you?” and “Which model are you?”. Leave a field blank to keep the built-in answer shown in grey. This takes priority over its usual identity rules.</p>
+        <p class="api-identity-help">What it answers to “Who are you?”, “Who made / trained you?”, “Which model are you?” and a few more common questions. Leave a field blank to keep the built-in answer shown in grey. This takes priority over its usual identity rules — whatever you save here is what it will tell every user, so make sure it's accurate.</p>
         <div class="api-grid">
           <div class="api-field gem-text-field">
             <label for="id_{{ ident.key }}_identity_name">Name it gives — “Who are you?”</label>
@@ -258,21 +271,47 @@ details[open] > .api-sum{border-bottom:1px solid var(--line)}
           <label for="id_{{ ident.key }}_identity_model">Model / version — “Which model are you?”</label>
           <input type="text" id="id_{{ ident.key }}_identity_model" name="identity_model__{{ ident.key }}" value="{{ ident.values.model|default:'' }}" maxlength="120" placeholder="{{ ident.defaults.model }}">
         </div>
+        <div class="api-grid">
+          <div class="api-field gem-text-field">
+            <label for="id_{{ ident.key }}_identity_cutoff">Knowledge cutoff (optional)</label>
+            <input type="text" id="id_{{ ident.key }}_identity_cutoff" name="identity_cutoff__{{ ident.key }}" value="{{ ident.values.cutoff|default:'' }}" maxlength="80" placeholder="e.g. Knowledge up to June 2026">
+          </div>
+          <div class="api-field gem-text-field">
+            <label for="id_{{ ident.key }}_identity_tone">Tone / personality (optional)</label>
+            <input type="text" id="id_{{ ident.key }}_identity_tone" name="identity_tone__{{ ident.key }}" value="{{ ident.values.tone|default:'' }}" maxlength="220" placeholder="e.g. Warm, casual and encouraging">
+          </div>
+        </div>
+        <div class="api-field gem-text-field">
+          <label for="id_{{ ident.key }}_identity_strengths">What it's best at / specialises in (optional)</label>
+          <input type="text" id="id_{{ ident.key }}_identity_strengths" name="identity_strengths__{{ ident.key }}" value="{{ ident.values.strengths|default:'' }}" maxlength="220" placeholder="e.g. Complex, multi-step reasoning and long documents">
+        </div>
         <div class="api-field gem-text-field">
           <label for="id_{{ ident.key }}_identity_notes">Other facts about itself (optional)</label>
           <textarea id="id_{{ ident.key }}_identity_notes" name="identity_notes__{{ ident.key }}" rows="2" maxlength="1000" placeholder="e.g. Released in 2026, built in India, specialises in study help">{{ ident.values.notes|default:'' }}</textarea>
         </div>
       </details>
       {% endfor %}
+      {% if panel.model_field %}
+      <div class="api-field gem-text-field">
+        <label for="id_{{ panel.id }}_model_id">Model name</label>
+        <input type="text" id="id_{{ panel.id }}_model_id" name="model_id" value="{{ panel.model_field.value }}" maxlength="200" placeholder="{{ panel.model_field.default }}" spellcheck="false" autocomplete="off">
+        <div class="api-field-meta">
+          {% if panel.model_field.overridden %}Changed from the built-in {{ panel.model_field.default }} — clear the box to go back to it.
+          {% else %}Built-in model.{% endif %}
+          Paste a model name or its build.nvidia.com page link. A new name is checked with the key below before anything is saved.
+        </div>
+      </div>
+      {% endif %}
       {% for field in panel.fields %}
       <div class="api-field gem-text-field">
         <label for="id_{{ panel.id }}_{{ field.setting }}">{{ field.label }}</label>
         <div class="api-field-row">
-          <input type="password" id="id_{{ panel.id }}_{{ field.setting }}" name="key__{{ field.setting }}" value="" autocomplete="new-password" placeholder="{% if field.configured %}{{ field.preview }}{% else %}Paste your API key{% endif %}">
+          <input type="password" id="id_{{ panel.id }}_{{ field.setting }}" name="key__{{ field.setting }}" value="" autocomplete="new-password" placeholder="{% if field.shared %}Paste a key just for this{% elif field.configured %}{{ field.preview }}{% else %}Paste your API key{% endif %}">
           {% if field.overridden and not panel.custom %}<button type="submit" name="action" value="clear:{{ field.setting }}" class="api-field-clear" title="Revert to the server default" formnovalidate>Clear</button>{% endif %}
         </div>
         <div class="api-field-meta">
           {% if panel.custom %}Saved {% if field.updated_at %}{{ field.updated_at|date:"d M Y, h:i A" }}{% endif %} — paste a new key to replace it (it is checked first)
+          {% elif field.shared %}No key of its own yet — using the Vidhyora Chat key. Paste one to give it a separate key; it is tested when you save.
           {% elif field.overridden %}Custom key{% if field.updated_at %}, saved {{ field.updated_at|date:"d M Y, h:i A" }}{% endif %}
           {% elif field.configured %}Using server default
           {% else %}No key configured{% endif %}
@@ -369,7 +408,8 @@ details[open] > .api-sum{border-bottom:1px solid var(--line)}
         hidden.name = btn.name;
         hidden.value = btn.value;
         if (btn.name) form.appendChild(hidden);
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking… this can take up to a minute';
+        var slow = form.id === 'addModelForm' ? document.getElementById('id_kind').value === 'video' : /Makes videos/.test(form.closest('details').textContent);
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking… this can take ' + (slow ? 'a few minutes (a test video is made)' : 'up to a minute');
         form.querySelectorAll('button').forEach(function(b){ b.disabled = true; });
       }
     });

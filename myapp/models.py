@@ -669,6 +669,33 @@ class YouTubeDownloadJob(models.Model):
         ordering = ['-created_at']
 
 
+class AIVideoJob(models.Model):
+    """One video being made for a chat turn. Video models take minutes, so
+    the work runs in the background (myapp.video_generation) and the chat
+    page polls this row; the finished video lands on ``message``."""
+    STATUS_WORKING = 'working'
+    STATUS_READY = 'ready'
+    STATUS_FAILED = 'failed'
+    STATUS_CHOICES = [(STATUS_WORKING, 'Working'), (STATUS_READY, 'Ready'), (STATUS_FAILED, 'Failed')]
+
+    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='ai_video_jobs')
+    session_key = models.CharField(max_length=40, blank=True, db_index=True)
+    message = models.ForeignKey('AIMessage', on_delete=models.CASCADE, related_name='video_jobs')
+    model_key = models.CharField(max_length=20)
+    prompt = models.TextField()
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STATUS_WORKING)
+    video_url = models.CharField(max_length=500, blank=True)
+    error = models.CharField(max_length=500, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'AI Video Job'
+        verbose_name_plural = 'AI Video Jobs'
+
+
 class AIGeneratedFile(models.Model):
     """A text/code file created from an AI chat request.
 
@@ -711,6 +738,8 @@ class AIMessage(models.Model):
     # Shown as a quote above the message and given to the model as context.
     reply_to_text = models.TextField(blank=True)
     model_key    = models.CharField(max_length=20, blank=True)  # which EduTrellis model answered (assistant turns only)
+    video_url    = models.CharField(max_length=500, blank=True)  # a generated video (assistant turns only)
+    web_sources  = models.JSONField(default=list, blank=True)    # live web results the reply used (web_search.public_sources)
     # Comma-separated slugs of real EduTrellis Store products shown as cards
     # under this reply (assistant turns only) — see myapp.product_search.
     # Never AI-generated text; always resolved from the real Product table
@@ -975,6 +1004,7 @@ class AIAPIKey(models.Model):
     key_prefix = models.CharField(max_length=12, help_text='First few characters, shown in the UI so the user can recognize their key.')
     created_at = models.DateTimeField(auto_now_add=True)
     last_used_at = models.DateTimeField(null=True, blank=True)
+    request_count = models.PositiveIntegerField(default=0)
 
     class Meta:
         verbose_name = 'AI API Key'
@@ -996,7 +1026,7 @@ class AIAPIKey(models.Model):
         key_prefix = raw_key[:11]
         cls.objects.update_or_create(
             user=user,
-            defaults={'key_hash': key_hash, 'key_prefix': key_prefix},
+            defaults={'key_hash': key_hash, 'key_prefix': key_prefix, 'last_used_at': None, 'request_count': 0},
         )
         return raw_key
 
@@ -1147,7 +1177,15 @@ class AIModelControl(models.Model):
     identity_name = models.CharField(max_length=80, blank=True)
     identity_creator = models.CharField(max_length=120, blank=True)
     identity_model = models.CharField(max_length=120, blank=True)
+    identity_cutoff = models.CharField(max_length=80, blank=True, help_text='e.g. "Knowledge up to June 2026".')
+    identity_strengths = models.CharField(max_length=220, blank=True, help_text='What it should say it is best at / specialises in.')
+    identity_tone = models.CharField(max_length=220, blank=True, help_text='How it should sound — e.g. "formal and concise" or "warm and casual".')
     identity_notes = models.TextField(max_length=1000, blank=True)
+    # The upstream model a built-in panel calls instead of the one in code
+    # (blank = built-in), and whether it accepted the hide-thinking switch
+    # when it was checked.
+    model_id = models.CharField(max_length=200, blank=True)
+    model_thinking_control = models.BooleanField(default=False)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -1170,7 +1208,23 @@ class CustomAIModel(models.Model):
         (API_OPENAI_COMPATIBLE, 'Other OpenAI-compatible API'),
     ]
 
+    KIND_CHAT = 'chat'
+    KIND_IMAGE = 'image'
+    KIND_VIDEO = 'video'
+    KIND_CHOICES = [
+        (KIND_CHAT, 'Chat model'),
+        (KIND_IMAGE, 'Makes images'),
+        (KIND_VIDEO, 'Makes videos'),
+    ]
+
     api_type = models.CharField(max_length=10, choices=API_TYPE_CHOICES, default=API_NVIDIA)
+    # Chat models join the model picker; image and video models are used by
+    # image / video generation when switched on (is_active, one per kind).
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES, default=KIND_CHAT)
+    is_active = models.BooleanField(default=False, help_text='Image/video models: the one used to make pictures/videos.')
+    # Image/video models: the address and request shape the checks found working.
+    endpoint_url = models.URLField(max_length=300, blank=True)
+    request_style = models.CharField(max_length=20, blank=True)
     base_url = models.URLField(max_length=300, blank=True, help_text='Only for an OpenAI-compatible API; NVIDIA uses its own.')
     model_id = models.CharField(max_length=200, help_text='The provider\'s model name, e.g. nvidia/nemotron-3-super-120b-a12b.')
     display_name = models.CharField(max_length=60)

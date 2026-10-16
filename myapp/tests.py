@@ -3654,6 +3654,45 @@ class AIAPIAccessTests(TestCase):
         self.assertEqual(response.json()['status'], 'validation_error')
         self.assertFalse(AIAPIAccess.objects.filter(user__email='nobody@example.com').exists())
 
+    def test_self_serve_request_grants_the_free_models_for_a_free_account(self):
+        self.client.force_login(self.customer)
+
+        response = self.client.post('/AI/api/developer-key/request-access/')
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(sorted(m['key'] for m in body['models']), ['code', 'quick'])
+        access = AIAPIAccess.objects.get(user=self.customer)
+        self.assertEqual(sorted(access.model_key_list), ['code', 'quick'])
+        # And the account API now reports access as granted.
+        account = self.client.get('/AI/api/account/').json()
+        self.assertTrue(account['api_access']['granted'])
+
+    def test_self_serve_request_grants_full_models_for_a_subscriber(self):
+        self.customer.store_profile.ai_subscription_until = timezone.now() + timedelta(days=30)
+        self.customer.store_profile.save(update_fields=['ai_subscription_until'])
+        self.client.force_login(self.customer)
+
+        response = self.client.post('/AI/api/developer-key/request-access/')
+
+        self.assertEqual(response.status_code, 200)
+        granted = {m['key'] for m in response.json()['models']}
+        self.assertIn('sol', granted)
+        self.assertIn('terra', granted)
+
+    def test_self_serve_request_requires_login(self):
+        response = self.client.post('/AI/api/developer-key/request-access/')
+        self.assertEqual(response.status_code, 401)
+
+    def test_self_serve_request_then_generate_key_works(self):
+        self.client.force_login(self.customer)
+        self.client.post('/AI/api/developer-key/request-access/')
+
+        response = self.client.post('/AI/api/developer-key/generate/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['api_key'].startswith('vdk_'))
+
     def test_key_generation_requires_a_grant_first(self):
         self.client.force_login(self.customer)
 
@@ -3766,6 +3805,15 @@ class AIAPIAccessTests(TestCase):
         self.assertEqual(stream_chat.call_args.kwargs['model_key'], 'quick')
         key = AIAPIKey.objects.get(user=self.customer)
         self.assertIsNotNone(key.last_used_at)
+        self.assertEqual(key.request_count, 1)
+
+        with patch('myapp.views.ai_chat.stream_chat', return_value=iter(['hi again'])):
+            self.client.post(
+                '/api/v1/chat/',
+                data=json.dumps({'messages': [{'role': 'user', 'content': 'hi'}], 'model': 'quick'}),
+                content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {raw_key}',
+            )
+        self.assertEqual(AIAPIKey.objects.get(user=self.customer).request_count, 2)
 
     def test_chat_api_upstream_failure_returns_a_clean_error_not_a_500(self):
         AIAPIAccess.objects.create(user=self.customer, model_keys='sol', granted_by=self.staff)
@@ -4935,6 +4983,9 @@ class ApiSettingsPanelsTests(TestCase):
         cache.clear()
         self.addCleanup(cache.clear)
         self.addCleanup(ai_chat.apply_model_text_overrides)
+        # Runs first: drop changed model names so MODELS is back to the code.
+        from .models import AIModelControl
+        self.addCleanup(lambda: (AIModelControl.objects.update(model_id=''), cache.clear()))
         self.staff = User.objects.create_user('panel-staff', password='pw', is_staff=True)
         StoreProfile.objects.get_or_create(user=self.staff)
         self.client.force_login(self.staff)
@@ -4960,7 +5011,7 @@ class ApiSettingsPanelsTests(TestCase):
         from .models import ProviderAPICredential
         self.assertEqual(ProviderAPICredential.objects.get(setting_name='NVIDIA_TERRA_API_KEY').value, 'nvapi-terra')
         self.assertEqual(client_for_key.call_args.args[0], 'nvapi-terra')
-        self.assertContains(response, 'API key saved.')
+        self.assertContains(response, 'API key saved — its numbers start from zero.')
 
     def test_disabling_a_chatgpt_model_hides_and_blocks_it(self):
         self.assertIn(ai_chat.TERRA_MODEL_KEY, self._picker())
@@ -4999,12 +5050,90 @@ class ApiSettingsPanelsTests(TestCase):
         from .models import ProviderAPICredential
         self.assertEqual(ProviderAPICredential.objects.get(setting_name='NVIDIA_API_KEY').value, 'nvapi-chat')
         self.assertEqual(client_for_key.call_args.args[0], 'nvapi-chat')
-        self.assertContains(response, 'API key saved.')
+        self.assertContains(response, 'API key saved — its numbers start from zero.')
         self.assertContains(response, 'Vidhyora Chat (Ultra / Quick / Code)')
         # No on/off switch for the shared chat key.
         chat = next(p for p in response.context['panels'] if p['id'] == 'chat')
         self.assertFalse(chat['toggle'])
         self.assertEqual([i['key'] for i in chat['items']], ['ultra', 'quick', 'code'])
+
+    @patch('myapp.custom_models.run_checks')
+    def test_a_new_model_name_is_checked_with_the_new_key_and_both_are_kept(self, run_checks):
+        from .models import ProviderAPICredential
+        run_checks.return_value = (True, [], {'thinking_control': False, 'vision': False})
+        response = self.client.post(self.URL, {
+            'panel': 'sol', 'action': 'save', 'enabled': 'on',
+            'model_id': 'https://build.nvidia.com/meta/llama-3.3-70b-instruct',
+            'key__NVIDIA_NEMOTRON_SUPER_API_KEY': 'nvapi-other',
+        })
+        run_checks.assert_called_once_with('nvidia', '', 'meta/llama-3.3-70b-instruct', 'nvapi-other')
+        self.assertContains(response, 'Model changed to meta/llama-3.3-70b-instruct')
+        self.assertEqual(ProviderAPICredential.objects.get(setting_name='NVIDIA_NEMOTRON_SUPER_API_KEY').value, 'nvapi-other')
+        cache.clear()
+        ai_chat.apply_model_id_overrides()
+        self.assertEqual(ai_chat.MODELS[ai_chat.SOL_MODEL_KEY]['id'], 'meta/llama-3.3-70b-instruct')
+        self.assertFalse(ai_chat.MODELS[ai_chat.SOL_MODEL_KEY]['reasoning'])
+        self.assertEqual(ai_chat.MODELS[ai_chat.TERRA_MODEL_KEY]['id'], ai_chat.default_model_id(ai_chat.TERRA_MODEL_KEY))
+        sol = next(p for p in response.context['panels'] if p['id'] == 'sol')
+        self.assertTrue(sol['model_field']['overridden'])
+
+        # Clearing the box goes back to the built-in model.
+        response = self.client.post(self.URL, {'panel': 'sol', 'action': 'save', 'enabled': 'on', 'model_id': ''})
+        self.assertContains(response, 'Back to the built-in model')
+        cache.clear()
+        ai_chat.apply_model_id_overrides()
+        self.assertEqual(ai_chat.MODELS[ai_chat.SOL_MODEL_KEY]['id'], ai_chat.default_model_id(ai_chat.SOL_MODEL_KEY))
+        self.assertTrue(ai_chat.MODELS[ai_chat.SOL_MODEL_KEY]['reasoning'])
+
+    @patch('myapp.custom_models.run_checks')
+    def test_a_model_name_that_fails_its_checks_saves_nothing(self, run_checks):
+        from .models import ProviderAPICredential
+        run_checks.return_value = (False, [{'label': 'Model name', 'status': 'fail', 'detail': 'not found.'}], {'thinking_control': False, 'vision': False})
+        response = self.client.post(self.URL, {
+            'panel': 'chat', 'action': 'save', 'model_id': 'nope/missing', 'key__NVIDIA_API_KEY': 'nvapi-new',
+        })
+        self.assertContains(response, 'Nothing was saved')
+        self.assertFalse(ProviderAPICredential.objects.filter(setting_name='NVIDIA_API_KEY').exists())
+        cache.clear()
+        ai_chat.apply_model_id_overrides()
+        self.assertEqual(ai_chat.MODELS['quick']['id'], ai_chat.NVIDIA_CHAT_MODEL)
+
+    @patch('myapp.custom_models.run_checks')
+    def test_the_chat_panel_model_name_moves_ultra_quick_and_code_together(self, run_checks):
+        run_checks.return_value = (True, [], {'thinking_control': True, 'vision': False})
+        with patch('myapp.api_controls.get_key', return_value='nvapi-saved'):
+            self.client.post(self.URL, {'panel': 'chat', 'action': 'save', 'model_id': 'qwen/qwen3-next-80b-a3b-instruct'})
+        self.assertEqual(run_checks.call_args.args[3], 'nvapi-saved')  # the saved key when none is pasted
+        cache.clear()
+        ai_chat.apply_model_id_overrides()
+        self.assertEqual({ai_chat.MODELS[k]['id'] for k in ai_chat.CHAT_GROUP_KEYS}, {'qwen/qwen3-next-80b-a3b-instruct'})
+
+    def test_a_models_identity_can_be_saved_with_cutoff_strengths_and_tone(self):
+        key = ai_chat.SOL_MODEL_KEY
+        response = self.client.post(self.URL, {
+            'panel': 'sol', 'action': 'save',
+            f'identity_name__{key}': 'Sol',
+            f'identity_creator__{key}': 'the Vidhyora team',
+            f'identity_model__{key}': 'Vidhyora Sol',
+            f'identity_cutoff__{key}': 'Knowledge up to June 2026',
+            f'identity_strengths__{key}': 'Complex, multi-step reasoning and long documents',
+            f'identity_tone__{key}': 'Warm, casual and encouraging',
+            f'identity_notes__{key}': 'Built in India.',
+        })
+        self.assertContains(response, 'Identity saved.')
+        identity = model_controls.get_identity(key)
+        self.assertEqual(identity, {
+            'name': 'Sol', 'creator': 'the Vidhyora team', 'model': 'Vidhyora Sol',
+            'cutoff': 'Knowledge up to June 2026',
+            'strengths': 'Complex, multi-step reasoning and long documents',
+            'tone': 'Warm, casual and encouraging', 'notes': 'Built in India.',
+        })
+        note = ai_chat.owner_identity_note(identity)
+        self.assertIn('Knowledge up to June 2026', note)
+        self.assertIn('Complex, multi-step reasoning and long documents', note)
+        self.assertIn('Warm, casual and encouraging', note)
+        line = ai_chat.owner_identity_line(identity)
+        self.assertIn('tone: Warm, casual and encouraging', line)
 
     def test_ultra_quick_and_code_can_be_renamed_and_follow_the_brand_by_default(self):
         self.client.post(self.URL, {
@@ -5437,7 +5566,7 @@ class ReplyLanguageTests(TestCase):
             self.assertEqual(stream.call_args.kwargs['language'], expected)
 
 
-from myapp import model_controls  # noqa: E402  (used by CodingApiTests)
+from myapp import coding_api, model_controls  # noqa: E402  (used by CodingApiTests)
 
 
 class CodingApiTests(TestCase):
@@ -5550,6 +5679,41 @@ class CodingApiTests(TestCase):
         self.assertIn('Vidhyora Code', system['content'])
         self.assertEqual(kwargs['messages'][2]['tool_calls'][0]['function']['arguments'], '{"path": "a.py"}')
         self.assertEqual(kwargs['messages'][3]['tool_call_id'], 'c1')
+
+    @patch('myapp.ai_chat._get_client')
+    def test_its_own_key_and_model_are_used_once_set_on_api_settings(self, get_client):
+        from .models import ProviderAPICredential
+        create = get_client.return_value.chat.completions.create
+        create.return_value = self._completion('Done')
+        self._post({'messages': [{'role': 'user', 'content': 'hi'}]})
+        self.assertEqual(get_client.call_args.args, ())  # shared chat key until one is saved
+        self.assertIn('extra_body', create.call_args.kwargs)
+
+        ProviderAPICredential.objects.create(setting_name='NVIDIA_CODING_API_KEY', value='nvapi-coding')
+        model_controls.set_model_override(coding_api.CONTROL_KEY, 'qwen/qwen3-coder-480b-a35b-instruct', False)
+        cache.clear()
+        self._post({'messages': [{'role': 'user', 'content': 'hi'}]})
+        self.assertEqual(get_client.call_args.args, ('NVIDIA_CODING_API_KEY',))
+        self.assertEqual(create.call_args.kwargs['model'], 'qwen/qwen3-coder-480b-a35b-instruct')
+        self.assertNotIn('extra_body', create.call_args.kwargs)  # it did not accept the thinking switch
+        self.assertEqual(ai_chat.MODELS['code']['id'], ai_chat.NVIDIA_CHAT_MODEL)  # Vidhyora Code itself unchanged
+
+    @patch('myapp.custom_models.run_checks')
+    def test_the_api_settings_panel_checks_a_new_model_with_the_new_key(self, run_checks):
+        from .models import ProviderAPICredential
+        run_checks.return_value = (True, [], {'thinking_control': True, 'vision': False})
+        staff = User.objects.create_user('coding-staff', password='pw', is_staff=True)
+        StoreProfile.objects.get_or_create(user=staff)
+        self.client.force_login(staff)
+        response = self.client.post('/store/dashboard/api-settings/', {
+            'panel': 'coding', 'action': 'save', 'enabled': 'on',
+            'model_id': 'qwen/qwen3-coder-480b-a35b-instruct', 'key__NVIDIA_CODING_API_KEY': 'nvapi-coding',
+        })
+        run_checks.assert_called_once_with('nvidia', '', 'qwen/qwen3-coder-480b-a35b-instruct', 'nvapi-coding')
+        self.assertContains(response, 'Model changed to qwen/qwen3-coder-480b-a35b-instruct')
+        self.assertEqual(ProviderAPICredential.objects.get(setting_name='NVIDIA_CODING_API_KEY').value, 'nvapi-coding')
+        cache.clear()
+        self.assertEqual(coding_api.upstream_model(), ('qwen/qwen3-coder-480b-a35b-instruct', True))
 
     @patch('myapp.ai_chat._get_client')
     def test_identity_is_added_when_the_client_sends_no_system_message(self, get_client):

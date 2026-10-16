@@ -37,6 +37,37 @@ CONTROL_KEY = 'coding-cli'           # dashboard on/off switch and counters
 # The one-command setup, with one key per approved computer, is unaffected.
 MANUAL_SETUP_ENABLED = False
 UPSTREAM_MODEL_KEY = 'code'          # the ai_chat.MODELS entry that answers
+# Its own key and model can be set on API Settings; until then it uses the
+# shared chat key and the Vidhyora Code model.
+API_KEY_SETTING = 'NVIDIA_CODING_API_KEY'
+
+
+def upstream_model():
+    """(model id, sends the hide-thinking switch) for the upstream call."""
+    model_id, thinking = model_controls.get_model_override(CONTROL_KEY)
+    if model_id:
+        return model_id, thinking
+    return ai_chat.MODELS[UPSTREAM_MODEL_KEY]['id'], True
+
+
+def test_connection():
+    """(ok, message) from one tiny request with the key and model in use."""
+    from myapp.provider_keys import get_key
+    model_id, thinking = upstream_model()
+    own_key = bool(get_key(API_KEY_SETTING).strip())
+    ok, message = ai_chat.test_model_connection(
+        UPSTREAM_MODEL_KEY, key_setting=API_KEY_SETTING if own_key else 'NVIDIA_API_KEY',
+        model_id=model_id, reasoning=thinking,
+    )
+    return ok, message.replace(ai_chat.MODELS[UPSTREAM_MODEL_KEY]['label'] + ' (', 'Start Coding (', 1)
+
+
+def upstream_client():
+    """The coding key's client when one is set, else the shared chat key's."""
+    from myapp.provider_keys import get_key
+    if get_key(API_KEY_SETTING).strip():
+        return ai_chat._get_client(API_KEY_SETTING)
+    return ai_chat._get_client()
 
 MAX_MESSAGES = 400
 MAX_TOOLS = 128
@@ -273,13 +304,14 @@ def with_identity(messages):
 
 def build_upstream_kwargs(payload):
     """The sanitized keyword arguments for the upstream completion call."""
-    cfg = ai_chat.MODELS[UPSTREAM_MODEL_KEY]
+    model_id, thinking_control = upstream_model()
     kwargs = {
-        'model': cfg['id'],
+        'model': model_id,
         'messages': with_identity(clean_messages(payload.get('messages'))),
         'stream': bool(payload.get('stream')),
-        'extra_body': {'chat_template_kwargs': {'enable_thinking': False}},
     }
+    if thinking_control:
+        kwargs['extra_body'] = {'chat_template_kwargs': {'enable_thinking': False}}
     tools = payload.get('tools')
     if tools:
         if not isinstance(tools, list) or len(tools) > MAX_TOOLS:
@@ -457,7 +489,7 @@ def chat_completions(request):
     model_controls.record_request(CONTROL_KEY)
     _record_use(key)
     try:
-        client = ai_chat._get_client()
+        client = upstream_client()
         upstream = client.chat.completions.create(**kwargs)
     except Exception as exc:
         logger.warning('Coding API upstream call failed for user %s: %s', key.user_id, exc)

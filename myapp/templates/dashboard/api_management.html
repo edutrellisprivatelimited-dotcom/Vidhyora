@@ -16,6 +16,7 @@
 .model-checkbox-grid label{display:flex;align-items:center;gap:.5rem;padding:.55rem .7rem;border:1.5px solid var(--line);border-radius:10px;background:var(--bg-alt);font-size:.82rem;font-weight:600;color:var(--head);cursor:pointer}
 .model-checkbox-grid input{accent-color:var(--red)}
 .panel-note{padding:0 1.4rem 1.1rem;font-size:.8rem;color:var(--text)}
+.api-row-sub{color:var(--text);opacity:.65;font-size:.78rem}
 </style>
 {% endblock %}
 
@@ -64,12 +65,12 @@
   </div>
   <div class="table-scroll">
   <table>
-    <thead><tr><th>Name</th><th>Email</th><th>Allowed models</th><th>Key status</th><th>Last updated</th><th></th></tr></thead>
+    <thead><tr><th>Name</th><th>Email</th><th>Allowed models</th><th>Key status</th><th>Requests</th><th>Last updated</th><th></th></tr></thead>
     <tbody id="apiGrantTableBody">
       {% for grant in grants %}
         {% include 'dashboard/_api_grant_row.html' with grant=grant %}
       {% empty %}
-      <tr><td colspan="6" class="empty-row">No accounts have been granted API access yet</td></tr>
+      <tr><td colspan="7" class="empty-row">No accounts have been granted API access yet</td></tr>
       {% endfor %}
     </tbody>
   </table>

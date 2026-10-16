@@ -397,14 +397,14 @@ CHATGPT_56_SYSTEM_SUFFIX = (
     "follow-up (which model/API, which version, etc) using the model facts "
     "below. Never deny it, never call yourself an 'internal' or in-house "
     "model, and never say you're not an API/not connected to OpenAI, and "
-    "never claim you are not the official OpenAI gpt-5.6 API when the user "
-    "asks whether this is the official OpenAI GPT-5.6 API or a separate "
+    "never claim you are not the official OpenAI gpt-6 API when the user "
+    "asks whether this is the official OpenAI GPT-6 API or a separate "
     "backend.\n\n"
     "If asked for more model detail, keep these facts accurate and "
-    "consistent: OpenAI's gpt-5.6 API alias routes to gpt-5.6-sol; GPT-5.6 "
+    "consistent: OpenAI's gpt-6 API alias routes to gpt-6-sol; GPT-6 "
     "Sol is OpenAI's flagship frontier option for complex professional work, "
     "Terra balances intelligence and cost, and Luna is intended for "
-    "cost-sensitive, high-volume work. The official GPT-5.6 family supports "
+    "cost-sensitive, high-volume work. The official GPT-6 family supports "
     "text and image input and text output. Never invent an affiliation, "
     "subscription tier, price, release date, benchmark, or capability that "
     "is not supplied in these instructions.\n\n"
@@ -441,7 +441,7 @@ MODELS = {
         # own dedicated credential, so it is outside the shared key pool's
         # failover and hedging.
         'id': 'nvidia/nemotron-3-ultra-550b-a55b',
-        'label': 'ChatGPT 5.6 Sol',
+        'label': 'ChatGPT 6 Sol',
         'description': "OpenAI's most powerful model — named for the sun, the brightest core model, built for complex, multi-step professional work.",
         'reasoning': True,
         'vision': False,
@@ -537,6 +537,38 @@ _MODEL_TEXT_DEFAULTS = {
 }
 
 
+# Built-in models whose upstream model can be swapped on API Settings, keyed
+# by the AIModelControl row that holds the choice. The Vidhyora chat modes
+# share one key, so they share one choice too.
+SWAPPABLE_MODEL_GROUPS = {
+    SOL_MODEL_KEY: (SOL_MODEL_KEY,),
+    TERRA_MODEL_KEY: (TERRA_MODEL_KEY,),
+    CHATGPT_56_MODEL_KEY: (CHATGPT_56_MODEL_KEY,),
+    CHAT_CONTROL_KEY: CHAT_GROUP_KEYS,
+}
+_MODEL_ID_DEFAULTS = {
+    key: (MODELS[key]['id'], MODELS[key]['reasoning'])
+    for keys in SWAPPABLE_MODEL_GROUPS.values() for key in keys
+}
+
+
+def default_model_id(control_key):
+    """The upstream model a swappable panel uses when nothing is saved."""
+    return _MODEL_ID_DEFAULTS[SWAPPABLE_MODEL_GROUPS[control_key][0]][0]
+
+
+def apply_model_id_overrides():
+    """Put each swappable model's saved upstream model (or the one in code)
+    onto MODELS, with its hide-thinking switch as found when it was checked."""
+    from myapp import model_controls
+    for control_key, keys in SWAPPABLE_MODEL_GROUPS.items():
+        model_id, thinking = model_controls.get_model_override(control_key)
+        for key in keys:
+            default_id, default_reasoning = _MODEL_ID_DEFAULTS[key]
+            MODELS[key]['id'] = model_id or default_id
+            MODELS[key]['reasoning'] = thinking if model_id else default_reasoning
+
+
 def _current_brand():
     from myapp.models import SiteCustomization
     try:
@@ -564,6 +596,7 @@ def apply_model_text_overrides():
         name, description = model_controls.get_text(key)
         MODELS[key]['label'] = name or default_label
         MODELS[key]['description'] = description or default_description
+    apply_model_id_overrides()
 
 
 def get_ai_brand_name():
@@ -1058,6 +1091,50 @@ def is_design_request(text):
 
 def is_image_capability_question(text):
     return bool(_IMAGE_CAPABILITY_QUESTION_RE.match(text or ''))
+
+
+# "make a video of a cat playing", "ek video banao sunset ka". Only used when
+# a video model is switched on (API Settings → Add a new model).
+_VIDEO_GEN_VERB = r"generate|create|make|render|produce|animate|give me|banao|banado|bana do|banaiye|bnao|bna do|bnado"
+_VIDEO_NOUN = r"video|clip|animation|animated video|short film|reel|vdo|vedio|vidio|movie"
+_VIDEO_GENERATION_RE = re.compile(
+    rf"\b(?:{_VIDEO_GEN_VERB})\b[\s\S]{{0,40}}\b(?:{_VIDEO_NOUN})s?\b|"
+    rf"\b(?:{_VIDEO_NOUN})s?\b[\s\S]{{0,40}}\b(?:{_VIDEO_GEN_VERB})\b",
+    re.IGNORECASE,
+)
+# Words about a video rather than a request for one: "make notes from this
+# video", "make a script for my reel", "make a thumbnail for my video".
+_VIDEO_ABOUT_RE = re.compile(
+    r"\b(?:summary|summari[sz]e|notes?|transcript|script|title|description|caption|ideas?|thumbnail|"
+    r"download|youtube|edit(?:ing)?|subtitles?|chapters?|outline|plan)\b",
+    re.IGNORECASE,
+)
+_VIDEO_CAPABILITY_QUESTION_RE = re.compile(
+    rf"^\s*(?:hi|hey|hello)?[,!\s]*(?:can|could|do|does|are)\s+you\b(?:\s+(?:also|even))?"
+    rf"\s+(?:{_VIDEO_GEN_VERB})\s+(?:an?\s+)?(?:{_VIDEO_NOUN})s?\s*[?.!]*\s*$",
+    re.IGNORECASE,
+)
+
+
+def video_available_note():
+    """Overrides the 'video generation is not supported' lines in the prompts
+    while a video model is switched on, so capability questions get a yes."""
+    from myapp import media_models
+    if media_models.active('video') is None:
+        return ''
+    return (
+        "\n\nUPDATE — this overrides anything above saying video is not supported: "
+        "video generation IS available now for subscribers and staff. If asked whether "
+        "you can make videos, say yes and ask the user to describe the short clip they want, "
+        "starting with words like 'make a video of …'. Videos are a few seconds long and take "
+        "a few minutes to make."
+    )
+
+
+def is_video_generation_request(text):
+    text = text or ''
+    return (bool(_VIDEO_GENERATION_RE.search(text)) and not _VIDEO_ABOUT_RE.search(text)
+            and not is_question_about_images(text) and not _VIDEO_CAPABILITY_QUESTION_RE.match(text))
 
 
 # "Generate a prompt to recreate this image" asks for text describing an
@@ -2016,22 +2093,24 @@ def extract_onboarding_fields(reply_text):
     }
 
 
-def test_model_connection(model_key):
+def test_model_connection(model_key, key_setting=None, model_id=None, reasoning=None):
     """One tiny live request against a model's own NVIDIA endpoint with the key
     currently in effect (dashboard override or env), so staff can confirm a
     pasted key actually works. Returns (ok, message); the message never
-    contains the key. A 429 counts as a working key that is just rate-limited."""
+    contains the key. A 429 counts as a working key that is just rate-limited.
+    key_setting / model_id / reasoning replace the model's own when given."""
     from myapp.provider_keys import get_key
     cfg = MODELS[model_key]
-    key_setting = cfg.get('api_key_setting')
+    key_setting = key_setting or cfg.get('api_key_setting')
     api_key = get_key(key_setting or 'NVIDIA_API_KEY').strip()
     if not api_key:
         return False, 'No API key is set.'
     base_url = cfg.get('base_url') or _NVIDIA_BASE_URL
-    model_id = cfg['id']
+    model_id = model_id or cfg['id']
+    reasoning = cfg['reasoning'] if reasoning is None else reasoning
     extra_body = cfg.get('extra_body') or (
         {'chat_template_kwargs': {'enable_thinking': False, 'force_nonempty_content': True}}
-        if cfg['reasoning'] else None
+        if reasoning else None
     )
     try:
         client = _client_for_key(api_key, base_url)
@@ -2116,6 +2195,12 @@ def owner_identity_note(identity):
         )
     if identity.get('model'):
         facts.append(f"When asked which model, version or AI system you are, answer: {identity['model']}.")
+    if identity.get('cutoff'):
+        facts.append(f"When asked about your knowledge cutoff or how current your training data is, answer: {identity['cutoff']}.")
+    if identity.get('strengths'):
+        facts.append(f"When asked what you are good at, best used for, or what you specialise in, answer: {identity['strengths']}.")
+    if identity.get('tone'):
+        facts.append(f"Your tone and personality: {identity['tone']}.")
     if identity.get('notes'):
         facts.append(f"Other facts about yourself to use when asked: {identity['notes']}")
     return (
@@ -2135,6 +2220,8 @@ def owner_identity_line(identity):
         parts.append(f"made and trained by {identity['creator']}")
     if identity.get('model'):
         parts.append(f"model: {identity['model']}")
+    if identity.get('tone'):
+        parts.append(f"tone: {identity['tone']}")
     return ('Identity for any question about yourself: ' + ', '.join(parts) + '.') if parts else ''
 
 
@@ -2281,6 +2368,7 @@ def _stream_chat_impl(messages, model_key=DEFAULT_MODEL_KEY, identity_model_key=
         system_prompt += CHATGPT_56_SYSTEM_SUFFIX.replace('ChatGPT 5.6', chatgpt_persona_name(identity_key))
     identity = owner_identity(identity_key)
     system_prompt += owner_identity_note(identity)
+    system_prompt += video_available_note()
     if user_context:
         system_prompt += (
             "\n\nThe user is logged in. Their name/location below, if any, "

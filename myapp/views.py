@@ -39,10 +39,12 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from datetime import datetime, timedelta, timezone as dt_timezone
 from myapp.forms import PhoneVerifyForm, AILoginForm, SignupEditForm, AIProfileEditForm, AIPasswordChangeForm, PaymentSettingsForm, PWASettingsForm, GrantAISubscriptionForm, GrantAPIAccessForm, AddUserForm, SiteCustomizationForm, MAX_AMOUNT_PAID
-from myapp.models import StoreProfile, Order, OrderItem, PaymentSettings, Payment, DropboxSettings, PhoneVerification, PWASettings, SiteCustomization, AIAccountMessageSettings, AIConversation, AIMessage, AIBlock, AINote, AIReport, AIGeneratedFile, AIUserImage, GitHubConnection, YouTubeDownloadJob, AIAPIAccess, AIAPIKey, ProviderAPICredential
+from myapp.models import StoreProfile, Order, OrderItem, PaymentSettings, Payment, DropboxSettings, PhoneVerification, PWASettings, SiteCustomization, AIAccountMessageSettings, AIConversation, AIMessage, AIBlock, AINote, AIReport, AIGeneratedFile, AIUserImage, GitHubConnection, YouTubeDownloadJob, AIAPIAccess, AIAPIKey, ProviderAPICredential, AIVideoJob
 from myapp import dropbox_backup
 from myapp import dropbox_images
 from myapp import ai_chat
+from myapp import media_models
+from myapp import video_generation
 from myapp import chat_export
 from myapp import ai_calls
 from myapp import coding_api
@@ -682,6 +684,47 @@ def ai_developer_key_generate(request):
     })
 
 
+def _ai_self_serve_model_keys(user):
+    """Which ai_chat.MODELS to grant when a user requests developer API
+    access themselves — the same chat models the in-app picker already
+    shows them, so self-serve just opens a second door to the same access
+    instead of handing out anything new."""
+    full_access = _ai_has_full_model_access(user)
+    return [
+        key for key in _api_chat_model_choices()
+        if ai_chat.is_model_enabled(key)
+        and (full_access or key not in AI_FULL_ACCESS_ONLY_MODEL_KEYS)
+        and (full_access or key in AI_FREE_MODEL_KEYS)
+    ]
+
+
+def ai_api_access_request(request):
+    """Self-serve developer API access: grants the signed-in user's own
+    AIAPIAccess row on the spot instead of making them contact staff (see
+    dashboard_api_access_grant for the staff-side equivalent). They still
+    generate their own key afterwards via ai_developer_key_generate."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'detail': 'Invalid request method.'}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({'status': 'error', 'detail': 'You need to be logged in.'}, status=401)
+
+    model_keys = _ai_self_serve_model_keys(request.user)
+    if not model_keys:
+        return JsonResponse({
+            'status': 'error',
+            'detail': 'No models are available to grant right now. Try again once a model is enabled for your account.',
+        }, status=400)
+
+    AIAPIAccess.objects.update_or_create(
+        user=request.user,
+        defaults={'model_keys': ','.join(model_keys), 'granted_by': request.user},
+    )
+    return JsonResponse({
+        'status': 'ok',
+        'models': [{'key': key, 'label': ai_chat.MODELS[key]['label']} for key in model_keys],
+    })
+
+
 # Chat-capable models only — an image-generation-only entry (image_generation:
 # True) has no 'chat.completions'-shaped upstream to answer through
 # ai_chat.stream_chat, so it's excluded from what the public API can serve
@@ -768,7 +811,7 @@ def api_chat_completions(request):
     else:
         reply = _vidhyora_public_reply(reply, ai_chat.MODELS[model_key]['label'])
 
-    AIAPIKey.objects.filter(pk=api_key.pk).update(last_used_at=timezone.now())
+    AIAPIKey.objects.filter(pk=api_key.pk).update(last_used_at=timezone.now(), request_count=F('request_count') + 1)
     return JsonResponse({
         'model': model_key,
         'reply': reply,
@@ -1681,6 +1724,7 @@ def dashboard_api_settings(request):
         'message': message,
         'add_result': add_result,
         'api_types': CustomAIModel.API_TYPE_CHOICES,
+        'model_kinds': CustomAIModel.KIND_CHOICES,
     })
 
 
@@ -2509,6 +2553,10 @@ AI_CHAT_RATE_WINDOW = 10 * 60     # per 10 minutes, per IP
 AI_CHAT_MAX_MESSAGE_CHARS = 16000
 AI_CHAT_MAX_HISTORY = 20          # last 10 user+assistant turns — outer cap on how many rows are even fetched
 AI_IMAGE_DAILY_LIMIT = 20         # successfully generated images, per account/session and local day
+# Starts a streamed reply that is an error message rather than an answer.
+# Invisible, and tells the page not to show that turn's web sources.
+AI_REPLY_FAILED_MARK = '\u2063'
+AI_VIDEO_DAILY_LIMIT = 5          # videos asked for, per account and local day (staff: no limit)
 # Accounts exempt from AI_IMAGE_DAILY_LIMIT entirely, by login email —
 # a manual allowlist rather than a plan/subscription flag, so it's just
 # this one specific account rather than a purchasable tier.
@@ -4219,6 +4267,42 @@ def _ai_flux_response(conversation, prompt, source_image, response_model_key=Non
     return response
 
 
+def _ai_video_response(request, conversation, prompt, video_row, response_model_key):
+    """Start a video for this turn. The reply is a "making your video" note;
+    the chat page polls ai_video_status and swaps in the clip when ready."""
+    assistant_message = AIMessage.objects.create(
+        conversation=conversation, role=AIMessage.ROLE_ASSISTANT,
+        content=video_generation.WORKING_TEXT, model_key=response_model_key or video_row.model_key,
+    )
+    job = AIVideoJob.objects.create(
+        user=request.user if request.user.is_authenticated else None,
+        session_key=request.session.session_key or '', message=assistant_message,
+        model_key=video_row.model_key, prompt=(prompt or '')[:AI_CHAT_MAX_MESSAGE_CHARS],
+    )
+    video_generation.start(job.pk)
+    response = HttpResponse(video_generation.WORKING_TEXT, content_type='text/plain; charset=utf-8')
+    response['Cache-Control'] = 'private, no-store'
+    response['X-Conversation-Id'] = str(conversation.id)
+    response['X-Model-Key'] = assistant_message.model_key
+    response['X-Routed-Model-Key'] = _ai_public_routed_model_key(assistant_message.model_key, video_row.model_key)
+    response['X-Request-Category'] = 'video_generation'
+    response['X-Video-Job'] = str(job.token)
+    response['X-Message-Id'] = str(assistant_message.pk)
+    return response
+
+
+def ai_video_status(request, token):
+    """Where a video job is: working, ready (with the video) or failed."""
+    job = AIVideoJob.objects.select_related('message__conversation').filter(token=token).first()
+    owner = AIConversation.objects.filter(_ai_owner_filter(request), pk=job.message.conversation_id).exists() if job else False
+    if not owner:
+        return JsonResponse({'status': 'error', 'detail': 'Video not found.'}, status=404)
+    video_generation.expire_if_stale(job)
+    response = JsonResponse({'status': job.status, 'video_url': job.video_url, 'error': job.error})
+    response['Cache-Control'] = 'private, no-store'
+    return response
+
+
 def _ai_visible_messages(request, conversation):
     """The conversation's live messages: not replaced by a retry/edit, and —
     while a retry/edit is being processed — not the turn it is replacing."""
@@ -4700,6 +4784,13 @@ def _ai_chat_send(request):
         else None
     )
     image_file_extension = _ai_image_file_request(message) if message else ''
+    # "make a video of …" goes to the video model switched on under API
+    # Settings; with none switched on it stays an ordinary chat turn.
+    video_row = (
+        media_models.active('video')
+        if message and not image_data and not generated_file_spec and ai_chat.is_video_generation_request(message)
+        else None
+    )
     if image_file_extension:
         # Built directly from the picture already in the chat - no model call,
         # and never mistaken for a request to draw or edit a picture.
@@ -4714,6 +4805,9 @@ def _ai_chat_send(request):
         # picker choice (including FLUX, which cannot produce text files).
         model_key = 'code'
         request_category = 'file_generation'
+    elif video_row is not None:
+        model_key = video_row.model_key
+        request_category = 'video_generation'
     elif image_prompt_writing:
         model_key = 'vision' if image_data else 'quick'
         request_category = 'image' if image_data else 'writing'
@@ -4844,6 +4938,16 @@ def _ai_chat_send(request):
             return JsonResponse(gate, status=403)
 
     if (
+        video_row is not None and request.user.is_authenticated and not _ai_has_admin_access(request.user)
+        and AIVideoJob.objects.filter(user=request.user, created_at__date=timezone.localdate()).count() >= AI_VIDEO_DAILY_LIMIT
+    ):
+        return JsonResponse({
+            'status': 'rate_limited',
+            'detail': f'Daily video limit reached. You can make up to {AI_VIDEO_DAILY_LIMIT} videos per day. Try again tomorrow.',
+            'limit': AI_VIDEO_DAILY_LIMIT,
+        }, status=429)
+
+    if (
         model_key == ai_chat.FLUX_KLEIN_4B_MODEL_KEY
         and (getattr(request.user, 'email', '') or '').strip().lower() not in AI_UNLIMITED_IMAGE_EMAILS
         and _ai_image_daily_count(request) >= AI_IMAGE_DAILY_LIMIT
@@ -4953,6 +5057,8 @@ def _ai_chat_send(request):
             conversation, image_generation_prompt, source_image_data, response_model_key,
             owner_email=owner_email,
         )
+    if video_row is not None:
+        return _ai_video_response(request, conversation, message, video_row, response_model_key)
 
     # First-time-in-AI-chat onboarding: ask a genuinely new user (once) for
     # their name/location/Instagram, then deterministically capture whatever
@@ -5117,6 +5223,7 @@ def _ai_chat_send(request):
     # answer store. No AI reply is ever generated from a knowledge base or
     # cached past answer.
     retrieved_context = retrieved_source = None
+    web_sources = []
     recent_company_text = ' '.join(
         str(item.get('content') or '') for item in recent[-5:]
         if isinstance(item.get('content'), str)
@@ -5130,7 +5237,7 @@ def _ai_chat_send(request):
         # one case where grounding matters most, since the output is a
         # downloadable document rather than a reply that scrolls away.
         search_started = time.perf_counter()
-        web_context = web_search.build_context(message)
+        web_context, web_sources = web_search.build_context_with_sources(message)
         logger.info(
             "AI timing web_search=%.3fs hit=%s forced=True",
             time.perf_counter() - search_started, bool(web_context),
@@ -5156,7 +5263,7 @@ def _ai_chat_send(request):
         # the critical path — and a failure just returns None, leaving the
         # model to answer as it did before.
         search_started = time.perf_counter()
-        web_context = web_search.build_context(message)
+        web_context, web_sources = web_search.build_context_with_sources(message)
         logger.info(
             "AI timing web_search=%.3fs hit=%s", time.perf_counter() - search_started,
             bool(web_context),
@@ -5359,13 +5466,13 @@ def _ai_chat_send(request):
                 # Retrying would just fail again identically — the fixed
                 # generic message was misleading here, since it reads as
                 # transient when the real fix is a shorter message/thread.
-                yield (
+                yield AI_REPLY_FAILED_MARK + (
                     "This conversation (or an attached document) has gotten "
                     "too long for the AI to process in one go. Please start "
                     "a new chat, or ask about a shorter excerpt."
                 )
             else:
-                yield _ai_chat_failure_reply(
+                yield AI_REPLY_FAILED_MARK + _ai_chat_failure_reply(
                     e, response_model_key,
                     is_staff=_ai_has_admin_access(request.user),
                 )
@@ -5381,6 +5488,7 @@ def _ai_chat_send(request):
                         AIMessage.objects.create(
                             conversation=conversation, role=AIMessage.ROLE_ASSISTANT,
                             content=message_reply, model_key=response_model_key,
+                            web_sources=web_sources,
                         )
                 except Exception:
                     logger.exception("Failed to save AI assistant reply for conversation %s", conversation.pk)
@@ -5408,6 +5516,9 @@ def _ai_chat_send(request):
     # instead of showing the usual follow-up chips (see is_persona_farewell
     # above; ai_chat.stream_chat was told to make this a closing message).
     response['X-Persona-End'] = '1' if is_persona_farewell else ''
+    if web_sources:
+        # Base64 JSON: page titles are often not plain ASCII, which a header can't carry.
+        response['X-Web-Sources'] = base64.b64encode(json.dumps(web_sources).encode('utf-8')).decode('ascii')
     return response
 
 
@@ -5935,6 +6046,63 @@ def ai_conversation_export(request, conversation_id, file_format):
     return response
 
 
+def _ai_message_with_sources(message):
+    """A reply's own text, with any live web sources it used appended as a
+    numbered reference list — what the PDF/Word download of one answer
+    (the small buttons under its Sources card) actually renders."""
+    content = (message.content or '').strip()
+    if message.web_sources:
+        lines = ['', '', '## Sources', '']
+        for index, source in enumerate(message.web_sources, 1):
+            title = (source.get('title') or source.get('url') or '').strip()
+            url = (source.get('url') or '').strip()
+            lines.append(f'{index}. [{title}]({url})' if url else f'{index}. {title}')
+        content += '\n'.join(lines)
+    return content
+
+
+def ai_message_export(request, message_id, file_format):
+    """Download one assistant reply (the one shown with its web sources) as
+    a real PDF or Word document, sources included as a reference list."""
+    if request.method != 'GET':
+        return JsonResponse({'status': 'error', 'detail': 'Invalid request method.'}, status=405)
+    if file_format not in ('pdf', 'docx'):
+        return JsonResponse({'status': 'error', 'detail': 'Unsupported export format.'}, status=400)
+
+    message = AIMessage.objects.filter(
+        conversation__in=AIConversation.objects.filter(_ai_owner_filter(request)),
+        pk=message_id, role=AIMessage.ROLE_ASSISTANT,
+    ).select_related('conversation').first()
+    if not message:
+        return JsonResponse({'status': 'error', 'detail': 'Message not found.'}, status=404)
+
+    content = _ai_message_with_sources(message)
+    if not content.strip():
+        return JsonResponse({'status': 'error', 'detail': 'This reply has nothing to export.'}, status=400)
+
+    brand = ai_chat.get_ai_brand_name()  # refresh model labels before they are printed
+    title = message.conversation.title or _ai_speaker_label(message)
+    local = timezone.localtime(message.created_at)
+    try:
+        if file_format == 'pdf':
+            chat = chat_export.Chat(title=title, turns=[chat_export.Turn(
+                role='assistant', who=_ai_speaker_label(message),
+                when=local.strftime('%d %b %Y, %I:%M %p'), time=local.strftime('%I:%M %p'),
+                content=content,
+            )])
+            payload = chat_export.build_pdf(brand, [chat], single=True)
+        else:
+            payload = file_convert.text_to_docx_bytes(content, title=title, brand=brand, created=message.created_at)
+    except file_convert.ConvertError as exc:
+        return JsonResponse({'status': 'error', 'detail': str(exc)}, status=503)
+
+    response = HttpResponse(payload, content_type=file_convert.mime_for(file_format))
+    response['Content-Disposition'] = f'attachment; filename="{_ai_download_name(title, file_format)}"'
+    response['X-Content-Type-Options'] = 'nosniff'
+    response['Cache-Control'] = 'private, no-store'
+    return response
+
+
 AI_EXPORT_ALL_LIMIT = 500
 
 
@@ -6166,8 +6334,16 @@ def ai_conversation_messages(request, conversation_id):
     request.session[AI_CURRENT_CONVERSATION_SESSION_KEY] = conversation.id
     messages_qs = list(
         conversation.messages.filter(superseded=False).order_by('created_at')
-        .values('id', 'role', 'content', 'image_data', 'document_name', 'model_key', 'reply_to_text')
+        .values('id', 'role', 'content', 'image_data', 'document_name', 'model_key', 'reply_to_text', 'video_url',
+                'web_sources')
     )
+    # A video still being made: the page keeps polling it after a reload.
+    working = dict(AIVideoJob.objects.filter(
+        message__conversation=conversation, status=AIVideoJob.STATUS_WORKING,
+    ).values_list('message_id', 'token'))
+    for m in messages_qs:
+        if m['id'] in working:
+            m['video_job'] = str(working[m['id']])
     return JsonResponse({'status': 'ok', 'title': conversation.title, 'messages': messages_qs})
 
 

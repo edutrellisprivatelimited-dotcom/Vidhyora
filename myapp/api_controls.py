@@ -26,25 +26,27 @@ def definitions():
     nvidia = 'NVIDIA API key (nvapi-…)'
     return [
         {'id': 'chat', 'kind': KIND_TEXT, 'model_key': ai_chat.CHAT_CONTROL_KEY, 'test_model': 'quick',
-         'title': 'Vidhyora Chat (Ultra / Quick / Code)', 'toggle': False,
+         'title': 'Vidhyora Chat (Ultra / Quick / Code)', 'toggle': False, 'swap_model': True,
          'text_models': list(ai_chat.CHAT_GROUP_KEYS),
          'note': 'One NVIDIA key runs Vidhyora Ultra, Quick and Code, and the workers the ChatGPT '
                  'models route through. It cannot be switched off.',
          'keys': [('NVIDIA_API_KEY', nvidia)]},
-        {'id': 'luna', 'kind': KIND_TEXT, 'model_key': ai_chat.CHATGPT_56_MODEL_KEY,
+        {'id': 'luna', 'kind': KIND_TEXT, 'model_key': ai_chat.CHATGPT_56_MODEL_KEY, 'swap_model': True,
          'note': 'The automatic route: picks the best worker for each message.',
          'keys': [('NVIDIA_LUNA_API_KEY', nvidia)]},
-        {'id': 'sol', 'kind': KIND_TEXT, 'model_key': ai_chat.SOL_MODEL_KEY,
+        {'id': 'sol', 'kind': KIND_TEXT, 'model_key': ai_chat.SOL_MODEL_KEY, 'swap_model': True,
          'note': 'Also the default model for staff and subscribers.',
          'keys': [('NVIDIA_NEMOTRON_SUPER_API_KEY', nvidia)]},
-        {'id': 'terra', 'kind': KIND_TEXT, 'model_key': ai_chat.TERRA_MODEL_KEY,
+        {'id': 'terra', 'kind': KIND_TEXT, 'model_key': ai_chat.TERRA_MODEL_KEY, 'swap_model': True,
          'note': '', 'keys': [('NVIDIA_TERRA_API_KEY', nvidia)]},
-        {'id': 'coding', 'kind': KIND_TEXT, 'model_key': coding_api.CONTROL_KEY, 'test_model': 'code',
-         'title': 'Start Coding (OpenCode CLI)', 'keys': [],
+        {'id': 'coding', 'kind': KIND_TEXT, 'model_key': coding_api.CONTROL_KEY, 'swap_model': True,
+         'title': 'Start Coding (OpenCode CLI)', 'key_fallback': 'NVIDIA_API_KEY',
+         'keys': [(coding_api.API_KEY_SETTING, nvidia)],
          'enable_text': 'let users connect the OpenCode terminal agent to Vidhyora Code (Start coding in the account menu)',
-         'note': 'Powers the terminal coding agent through /api/v1/code/ using the Vidhyora Chat key above — '
-                 'no separate key. Users sign in with a personal key made under Start coding; paid plans and staff only. '
-                 'Test connection checks the Vidhyora Code model that serves it.'},
+         'note': 'Powers the terminal coding agent through /api/v1/code/ with its own key and model. Until a key '
+                 'is saved here it uses the Vidhyora Chat key above, and until a model is changed here it uses the '
+                 'Vidhyora Code model. Users sign in with a personal key made under Start coding; paid plans and staff only. '
+                 'Pick a model that supports tool calling — the coding agent needs it.'},
         {'id': 'image', 'kind': KIND_IMAGE, 'model_key': ai_chat.FLUX_KLEIN_4B_MODEL_KEY,
          'note': 'Text-to-image and photo editing.', 'keys': [('NVIDIA_FLUX_API_KEY', nvidia)]},
         {'id': 'search', 'kind': KIND_SEARCH, 'model_key': SEARCH_CONTROL_KEY,
@@ -63,13 +65,38 @@ def _custom_definitions():
     panels = []
     for row in rows:
         nvidia = row.api_type == CustomAIModel.API_NVIDIA
-        panels.append({
+        panel = {
             'id': row.model_key, 'kind': KIND_TEXT, 'model_key': row.model_key,
             'title': row.display_name, 'custom': row,
             'note': f"{'NVIDIA NIM' if nvidia else row.base_url} · {row.model_id}",
             'keys': [(row.key_setting, 'NVIDIA API key (nvapi-…)' if nvidia else 'API key')],
-        })
+        }
+        if row.kind != CustomAIModel.KIND_CHAT:
+            panel['note'] += ' · ' + row.get_kind_display()
+            panel['enable_text'] = _MEDIA_ENABLE_TEXT[row.kind]
+        panels.append(panel)
     return panels
+
+
+_MEDIA_ENABLE_TEXT = {
+    'image': 'use this model to make every picture (only one image model at a time; FLUX takes over if it fails)',
+    'video': 'use this model to make videos when someone asks for one in chat (only one video model at a time)',
+}
+
+
+def _set_active(row, active):
+    """Switch an added image/video model on or off. On means it is the one
+    used for its kind, so any other one of that kind is switched off."""
+    from myapp.models import CustomAIModel
+    if active:
+        for other in CustomAIModel.objects.filter(kind=row.kind, is_active=True).exclude(pk=row.pk):
+            other.is_active = False
+            other.save(update_fields=['is_active'])
+            model_controls.set_enabled(other.model_key, False)
+    if row.is_active != active:
+        row.is_active = active
+        row.save(update_fields=['is_active'])
+    model_controls.set_enabled(row.model_key, active)
 
 
 _PERSONA_KEYS = (ai_chat.CHATGPT_56_MODEL_KEY, ai_chat.SOL_MODEL_KEY, ai_chat.TERRA_MODEL_KEY)
@@ -78,7 +105,7 @@ _PERSONA_KEYS = (ai_chat.CHATGPT_56_MODEL_KEY, ai_chat.SOL_MODEL_KEY, ai_chat.TE
 def _chat_model_keys(defn):
     """The picker models a panel controls, whose identity can be set."""
     if defn.get('custom'):
-        return [defn['model_key']]
+        return [defn['model_key']] if defn['custom'].kind == 'chat' else []
     if defn['kind'] != KIND_TEXT or defn['id'] == 'coding':
         return []
     return list(defn.get('text_models') or [defn['model_key']])
@@ -98,6 +125,14 @@ def _removable_keys(defn):
     return [key for key in (defn.get('text_models') or [defn['model_key']]) if key in ai_chat.REMOVABLE_MODEL_KEYS]
 
 
+def _default_model(key):
+    """The model a swappable panel uses when none is saved. Start Coding
+    follows whatever Vidhyora Code uses."""
+    if key == coding_api.CONTROL_KEY:
+        return ai_chat.MODELS[coding_api.UPSTREAM_MODEL_KEY]['id']
+    return ai_chat.default_model_id(key)
+
+
 def _mask(value):
     value = (value or '').strip()
     if not value:
@@ -114,7 +149,14 @@ def _find(panel_id):
 def _check_custom(row, api_key):
     """Run every check for an added model; keep what they found on the row.
     Returns (ok, report)."""
-    from myapp import custom_models
+    from myapp import custom_models, media_models
+    if row.kind != row.KIND_CHAT:
+        ok, report, found = media_models.run_checks(row.kind, row.model_id, api_key)
+        if ok:
+            row.endpoint_url, row.request_style = found['endpoint_url'], found['request_style']
+        custom_models.save_report(row, report)
+        row.save()
+        return ok, report
     ok, report, found = custom_models.run_checks(row.api_type, row.base_url, row.model_id, api_key)
     if ok:
         row.thinking_control = found['thinking_control']
@@ -141,6 +183,8 @@ def run_test(defn):
         ok, report = _check_custom(row, get_key(row.key_setting))
         return ok, _report_summary(ok, report)
     kind = defn['kind']
+    if defn['id'] == 'coding':
+        return coding_api.test_connection()
     if kind == KIND_TEXT:
         return ai_chat.test_model_connection(defn.get('test_model') or defn['model_key'])
     if kind == KIND_IMAGE:
@@ -172,19 +216,27 @@ def panel_context():
                 'default_description': default_description,
             })
         title = defn.get('title') or (cfg['label'] if cfg else '')
+        model_field = None
+        if defn.get('swap_model'):
+            override, _thinking = model_controls.get_model_override(key)
+            model_field = {'value': override or _default_model(key),
+                           'default': _default_model(key), 'overridden': bool(override)}
         fields = []
         for setting, label in defn['keys']:
             current = get_key(setting)
             override = overrides.get(setting)
+            fallback = defn.get('key_fallback') if not current else None
             fields.append({
                 'setting': setting, 'label': label,
-                'configured': bool(current), 'preview': _mask(current),
+                'configured': bool(current) or bool(fallback and get_key(fallback)),
+                'shared': bool(fallback), 'preview': _mask(current),
                 'overridden': override is not None,
                 'updated_at': override.updated_at if override else None,
             })
         panels.append({
             'id': defn['id'], 'kind': defn['kind'], 'title': title, 'note': defn['note'],
             'fields': fields, 'configured': all(f['configured'] for f in fields),
+            'model_field': model_field,
             'toggle': defn.get('toggle', True),
             'enabled': model_controls.is_enabled(key),
             'enable_text': defn.get('enable_text') or _ENABLE_TEXT[defn['kind']].format(label=title),
@@ -257,6 +309,14 @@ def handle_post(request):
 
     parts = []
     new_key_saved = False
+    tested = False
+    if action == 'save' and defn.get('swap_model') and 'model_id' in request.POST:
+        changed, ok, detail = _save_model_change(request, defn)
+        if changed and not ok:
+            return panel_id, False, detail
+        if changed:
+            parts.append(detail)
+            tested = True
     if action == 'save':
         for setting, _label in defn['keys']:
             value = request.POST.get(f'key__{setting}', '').strip()
@@ -268,7 +328,9 @@ def handle_post(request):
                 invalidate(setting)
                 new_key_saved = True
         if new_key_saved:
-            parts.append('API key saved.')
+            model_controls.reset_usage(key)
+        if new_key_saved:
+            parts.append('API key saved — its numbers start from zero.')
 
         text_changed = False
         for text_key in defn.get('text_models') or ([key] if key in ai_chat._MODEL_TEXT_DEFAULTS else []):
@@ -299,12 +361,42 @@ def handle_post(request):
 
     # Test after a new key is pasted (so "saved" always comes with "does it
     # work") and whenever the Test button is pressed.
-    if action == 'test' or new_key_saved:
+    if action == 'test' or (new_key_saved and not tested):
         ok, detail = run_test(defn)
         model_controls.record_test(key, ok, detail)
         parts.append(detail if ok else f'Test failed: {detail}')
         return panel_id, ok, ' '.join(parts)
     return panel_id, True, ' '.join(parts) or 'No changes.'
+
+
+def _save_model_change(request, defn):
+    """A new model name on a built-in panel. The name is checked together
+    with the key in the form (or the saved key) the same way "Add a new
+    model" checks one, and is kept only when that works. A blank name goes
+    back to the built-in model. Returns (changed, ok, message)."""
+    from myapp import custom_models
+    key = defn['model_key']
+    default = _default_model(key)
+    current = model_controls.get_model_override(key)[0] or default
+    wanted = custom_models.clean_model_id(request.POST.get('model_id', '')) or default
+    if wanted.lower() == current.lower():
+        return False, True, ''
+    setting = defn['keys'][0][0]
+    api_key = (custom_models.clean_key(request.POST.get(f'key__{setting}', '')) or get_key(setting).strip()
+               or get_key(defn.get('key_fallback') or setting).strip())
+    ok, report, found = custom_models.run_checks('nvidia', '', wanted, api_key)
+    if not ok:
+        return True, False, ('Nothing was saved — the model name and API key were checked together and did not work. '
+                             + _report_summary(ok, report))
+    model_id = found.get('model_id', wanted)
+    model_controls.set_model_override(key, '' if model_id.lower() == default.lower() else model_id,
+                                      found['thinking_control'])
+    ai_chat.apply_model_id_overrides()
+    summary = _report_summary(ok, report)
+    model_controls.record_test(key, True, summary)
+    if model_id.lower() == default.lower():
+        return True, True, f'Back to the built-in model {default} — all checks passed.'
+    return True, True, f'Model changed to {model_id} — all checks passed.'
 
 
 def _handle_custom_post(request, defn, action):
@@ -349,27 +441,34 @@ def _handle_custom_post(request, defn, action):
             setting_name=row.key_setting, defaults={'value': new_key, 'updated_by': request.user},
         )
         invalidate(row.key_setting)
+        model_controls.reset_usage(row.model_key)
         model_controls.record_test(row.model_key, True, _report_summary(ok, report))
-        parts.append('New API key saved — all checks passed.')
+        parts.append('New API key saved — all checks passed. Its numbers start from zero.')
 
     enabled = request.POST.get('enabled') == 'on'
+    if row.kind != row.KIND_CHAT and enabled and not row.endpoint_url:
+        return panel_id, False, ' '.join(parts + ['It cannot be switched on until "Run all checks" passes.'])
     if enabled != model_controls.is_enabled(row.model_key):
         parts.append('Enabled.' if enabled else 'Disabled.')
-    model_controls.set_enabled(row.model_key, enabled)
+    if row.kind != row.KIND_CHAT:
+        _set_active(row, enabled)
+    else:
+        model_controls.set_enabled(row.model_key, enabled)
     return panel_id, True, ' '.join(parts) or 'No changes.'
 
 
 def add_model(request):
     """The "Add a new model" form. Returns a dict for the template: ok,
     message, report (the checks) and values (to refill the form on failure)."""
-    from myapp import custom_models
+    from myapp import custom_models, media_models
     from myapp.models import CustomAIModel, ProviderAPICredential
     api_type = request.POST.get('api_type', CustomAIModel.API_NVIDIA)
     if api_type not in dict(CustomAIModel.API_TYPE_CHOICES):
         api_type = CustomAIModel.API_NVIDIA
     nvidia = api_type == CustomAIModel.API_NVIDIA
+    kind = request.POST.get('kind', 'auto')
     values = {
-        'api_type': api_type,
+        'api_type': api_type, 'kind': kind,
         'base_url': '' if nvidia else custom_models.clean_base_url(request.POST.get('base_url', '')),
         'model_id': custom_models.clean_model_id(request.POST.get('model_id', '')),
         'display_name': request.POST.get('display_name', '').strip()[:60],
@@ -384,6 +483,14 @@ def add_model(request):
         return {'ok': False, 'values': values, 'report': [],
                 'message': f'{values["model_id"]} is already added as "{duplicate.display_name}". '
                            'Change its key or test it in its own section below.'}
+
+    if kind not in dict(CustomAIModel.KIND_CHOICES):
+        kind = media_models.guess_kind(values['model_id']) if nvidia else CustomAIModel.KIND_CHAT
+    if kind != CustomAIModel.KIND_CHAT:
+        if not nvidia:
+            return {'ok': False, 'values': values, 'report': [],
+                    'message': 'Image and video models can only be added from NVIDIA (build.nvidia.com) for now.'}
+        return _add_media_model(request, kind, values, api_key)
 
     ok, report, found = custom_models.run_checks(api_type, values['base_url'], values['model_id'], api_key)
     if not ok:
@@ -409,6 +516,36 @@ def add_model(request):
     custom_models.mark_changed()
     return {'ok': True, 'values': {}, 'report': report, 'new_panel': row.model_key,
             'message': f'{row.display_name} was added and is now in the model picker for staff and subscribers.'}
+
+
+def _add_media_model(request, kind, values, api_key):
+    """Add an image or video model after its checks pass, and switch it on as
+    the one that makes pictures / videos."""
+    from myapp import custom_models, media_models
+    from myapp.models import CustomAIModel, ProviderAPICredential
+    ok, report, found = media_models.run_checks(kind, values['model_id'], api_key)
+    if not ok:
+        return {'ok': False, 'values': values, 'report': report,
+                'message': 'The model was not added — fix the item marked below and try again.'}
+    row = CustomAIModel(
+        api_type=CustomAIModel.API_NVIDIA, kind=kind, model_id=values['model_id'],
+        display_name=values['display_name'] or custom_models.default_name(values['model_id']),
+        description=values['description'], endpoint_url=found['endpoint_url'],
+        request_style=found['request_style'], created_by=request.user,
+    )
+    custom_models.save_report(row, report)
+    row.save()
+    ProviderAPICredential.objects.update_or_create(
+        setting_name=row.key_setting, defaults={'value': api_key, 'updated_by': request.user},
+    )
+    invalidate(row.key_setting)
+    _set_active(row, True)
+    model_controls.record_test(row.model_key, True, _report_summary(True, report))
+    custom_models.mark_changed()
+    use = ('now makes every picture; FLUX takes over if it ever fails' if kind == 'image'
+           else 'now makes a video whenever someone asks for one in chat (staff and subscribers)')
+    return {'ok': True, 'values': {}, 'report': report, 'new_panel': row.model_key,
+            'message': f'{row.display_name} was added and {use}.'}
 
 
 def _save_identities(request, defn):

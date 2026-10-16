@@ -435,6 +435,32 @@ def generate_image(prompt, source_image=None, *, size=None):
 
 def _dispatch_generate(prompt, source_image, size=None):
     editing = bool(source_image)
+    if not editing:
+        image = _from_added_model(prompt, size)
+        if image:
+            return image
+    return _dispatch_flux(prompt, source_image, size)
+
+
+def _from_added_model(prompt, size):
+    """A picture from the image model switched on under API Settings → Add a
+    new model, or None when there is none or it failed — FLUX then makes it."""
+    from myapp import media_models
+    row = media_models.active('image')
+    if row is None:
+        return None
+    try:
+        content, extension = media_models.generate(row, prompt, size=size or resolve_dimensions(prompt))
+    except media_models.MediaError as exc:
+        if exc.kind == 'filtered':
+            raise ImageGenerationError(str(exc), status_code=400, blocked=True)
+        logger.warning('Added image model %s failed (%s); FLUX makes the picture instead', row.model_id, exc)
+        return None
+    return GeneratedImage(content=content, extension=extension)
+
+
+def _dispatch_flux(prompt, source_image, size=None):
+    editing = bool(source_image)
     edit_url = _get_key('FLUX_EDIT_API_URL').strip() if editing else ''
     # NVIDIA's hosted FLUX.2 Klein preview does not accept arbitrary uploads.
     # Its ``image`` field only accepts one of four NVIDIA-owned example IDs
@@ -506,7 +532,7 @@ def test_connection():
     (and its backup, if set), so the dashboard can confirm the key works.
     Returns (ok, message)."""
     try:
-        image = _dispatch_generate('a small red circle on a plain white background', None)
+        image = _dispatch_flux('a small red circle on a plain white background', None)
     except ImageGenerationError as exc:
         return False, str(exc)[:250]
     except Exception as exc:

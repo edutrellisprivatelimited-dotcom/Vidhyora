@@ -128,21 +128,66 @@ def set_removed(model_key, removed):
     cache.delete(_CACHE_PREFIX + model_key)
 
 
-IDENTITY_FIELDS = ('name', 'creator', 'model', 'notes')
+def reset_usage(model_key):
+    """Start a panel's counters, last error and last test from zero — done
+    when a new API key is saved, so the numbers describe that key only."""
+    from myapp.models import AIModelControl
+    AIModelControl.objects.filter(model_key=model_key).update(
+        request_count=0, success_count=0, error_count=0, last_used_at=None, last_error='',
+        last_tested_at=None, last_test_ok=None, last_test_message='',
+    )
+
+
+_MODEL_ID_PREFIX = 'model_upstream:'
+
+
+def get_model_override(model_key):
+    """(model_id, thinking_control) set on API Settings, or ('', False) when
+    the model in code applies."""
+    cache_key = _MODEL_ID_PREFIX + model_key
+    value = cache.get(cache_key, _UNSET)
+    if value is _UNSET:
+        value = ('', False)
+        try:
+            from myapp.models import AIModelControl
+            row = AIModelControl.objects.filter(model_key=model_key).values_list('model_id', 'model_thinking_control').first()
+            if row and row[0]:
+                value = (row[0], bool(row[1]))
+        except Exception:
+            value = ('', False)
+        cache.set(cache_key, value, _CACHE_TTL)
+    return value
+
+
+def set_model_override(model_key, model_id, thinking_control=False):
+    """Blank model_id goes back to the model in code."""
+    from myapp.models import AIModelControl
+    AIModelControl.objects.update_or_create(model_key=model_key, defaults={
+        'model_id': (model_id or '').strip()[:200], 'model_thinking_control': bool(thinking_control),
+    })
+    cache.delete(_MODEL_ID_PREFIX + model_key)
+
+
+IDENTITY_FIELDS = ('name', 'creator', 'model', 'cutoff', 'strengths', 'tone', 'notes')
+_IDENTITY_DB_COLUMNS = (
+    'identity_name', 'identity_creator', 'identity_model',
+    'identity_cutoff', 'identity_strengths', 'identity_tone', 'identity_notes',
+)
+_IDENTITY_MAX_LENGTHS = {'name': 80, 'creator': 120, 'model': 120, 'cutoff': 80, 'strengths': 220, 'tone': 220, 'notes': 1000}
 _IDENTITY_PREFIX = 'model_identity:'
 
 
 def get_identity(model_key):
-    """{'name', 'creator', 'model', 'notes'} with only the fields the site
-    owner filled in, or {} when the built-in identity rules apply."""
+    """{'name', 'creator', 'model', 'cutoff', 'strengths', 'tone', 'notes'}
+    with only the fields the site owner filled in, or {} when the built-in
+    identity rules apply."""
     cache_key = _IDENTITY_PREFIX + str(model_key)
     value = cache.get(cache_key, _UNSET)
     if value is _UNSET:
         value = {}
         try:
             from myapp.models import AIModelControl
-            row = AIModelControl.objects.filter(model_key=model_key).values_list(
-                'identity_name', 'identity_creator', 'identity_model', 'identity_notes').first()
+            row = AIModelControl.objects.filter(model_key=model_key).values_list(*_IDENTITY_DB_COLUMNS).first()
             if row:
                 value = {field: text.strip() for field, text in zip(IDENTITY_FIELDS, row) if (text or '').strip()}
         except Exception:
@@ -151,11 +196,13 @@ def get_identity(model_key):
     return value
 
 
-def set_identity(model_key, name='', creator='', model='', notes=''):
+def set_identity(model_key, name='', creator='', model='', cutoff='', strengths='', tone='', notes=''):
     from myapp.models import AIModelControl
     AIModelControl.objects.update_or_create(model_key=model_key, defaults={
         'identity_name': name.strip()[:80], 'identity_creator': creator.strip()[:120],
-        'identity_model': model.strip()[:120], 'identity_notes': notes.strip()[:1000],
+        'identity_model': model.strip()[:120], 'identity_cutoff': cutoff.strip()[:80],
+        'identity_strengths': strengths.strip()[:220], 'identity_tone': tone.strip()[:220],
+        'identity_notes': notes.strip()[:1000],
     })
     cache.delete(_IDENTITY_PREFIX + model_key)
 

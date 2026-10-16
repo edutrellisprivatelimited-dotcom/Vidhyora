@@ -183,6 +183,9 @@ NVIDIA_TERRA_API_KEY = os.environ.get(
 ).strip()
 if not NVIDIA_TERRA_API_KEY and _terra_key_file.is_file():
     NVIDIA_TERRA_API_KEY = _terra_key_file.read_text(encoding='utf-8').strip()
+# Start Coding (OpenCode CLI). Blank = it shares NVIDIA_API_KEY; usually set
+# on the dashboard's API Settings page instead.
+NVIDIA_CODING_API_KEY = os.environ.get('NVIDIA_CODING_API_KEY', '').strip()
 NVIDIA_FLUX_EDIT_API_KEY = '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'
 
 TAVILY_API_KEY = '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'
