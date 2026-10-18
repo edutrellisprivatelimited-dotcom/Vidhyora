@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import User
 
-from .models import StoreProfile, Order, OrderItem, PaymentSettings, Payment, DropboxSettings, PhoneVerification, PWASettings, EmailSettings, EmailVerification, AIConversation, AIMessage, GitHubConnection, KnowledgeEntry, AIReport
+from .models import ContactSubmission, StoreProfile, Order, OrderItem, PaymentSettings, Payment, DropboxSettings, PhoneVerification, PWASettings, EmailSettings, EmailVerification, AIConversation, AIMessage, GitHubConnection, KnowledgeEntry, AIReport
 
 
 
@@ -237,3 +237,11 @@ class StoreUserAdmin(UserAdmin):
 
 admin.site.unregister(User)
 admin.site.register(User, StoreUserAdmin)
+
+
+@admin.register(ContactSubmission)
+class ContactSubmissionAdmin(admin.ModelAdmin):
+    list_display = ('created_at', 'source', 'name', 'email', 'phone', 'service')
+    list_filter = ('source', 'service', 'created_at')
+    search_fields = ('name', 'email', 'phone', 'message')
+    readonly_fields = ('created_at', 'ip_address')

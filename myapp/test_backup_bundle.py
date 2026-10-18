@@ -163,3 +163,43 @@ class LargeBackupTests(SimpleTestCase):
             status_file.write_text(json.dumps({'state': 'running', 'started': 1, 'message': 'Uploading'}))
             with patch.object(backup, 'STATUS_FILE', status_file):
                 self.assertEqual(backup.job_status()['state'], 'error')
+
+    def test_cancel_frees_the_page_and_the_worker_stops_without_reporting(self):
+        import threading
+        with tempfile.TemporaryDirectory() as folder:
+            status_file = Path(folder) / 'status.json'
+            reached, release, outcome = threading.Event(), threading.Event(), {}
+
+            def fake_create(settings_obj, *, missing_images=None, progress=None):
+                progress('Packing')
+                reached.set()
+                release.wait(5)
+                try:
+                    progress('Uploading')
+                except backup.BackupCancelled:
+                    outcome['stopped'] = True
+                    raise
+                return 'backup_x.zip'
+
+            with patch.object(backup, 'STATUS_FILE', status_file), patch.object(backup, 'create_backup', side_effect=fake_create):
+                self.assertTrue(backup.start_backup_job(SimpleNamespace()))
+                reached.wait(5)
+                self.assertTrue(backup.cancel_backup_job())
+                self.assertEqual(backup.job_status()['state'], 'cancelled')
+                release.set()
+                for thread in threading.enumerate():
+                    if thread.name == 'dropbox-backup':
+                        thread.join(5)
+                status = backup.job_status()
+                self.assertFalse(backup.cancel_backup_job())
+        self.assertTrue(outcome.get('stopped'))
+        self.assertEqual(status['state'], 'cancelled')
+
+    def test_a_backup_whose_progress_went_silent_is_not_shown_as_running(self):
+        import time as _time
+        with tempfile.TemporaryDirectory() as folder:
+            status_file = Path(folder) / 'status.json'
+            now = _time.time()
+            status_file.write_text(json.dumps({'state': 'running', 'started': now - 1200, 'updated': now - 1200, 'message': 'Packing'}))
+            with patch.object(backup, 'STATUS_FILE', status_file):
+                self.assertEqual(backup.job_status()['state'], 'error')

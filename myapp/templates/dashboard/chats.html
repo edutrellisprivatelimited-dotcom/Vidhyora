@@ -1,0 +1,209 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Chats{% endblock %}
+{% block page_title %}Chats{% endblock %}
+
+{% block extra_head %}
+<style>
+.ch-filters{display:flex;flex-direction:column;gap:.8rem;padding:1rem 1.4rem;border-bottom:1px solid var(--line)}
+.ch-tabs{display:flex;gap:.4rem;flex-wrap:wrap}
+.ch-tab{display:inline-flex;align-items:center;gap:.4rem;padding:.42rem .85rem;border-radius:999px;border:1.5px solid var(--line);background:#fff;color:var(--head);font-size:.8rem;font-weight:700;cursor:pointer;text-decoration:none}
+.ch-tab b{font-size:.7rem;padding:.05rem .45rem;border-radius:999px;background:var(--bg-alt)}
+.ch-tab:hover{border-color:var(--red)}
+.ch-tab.on{background:var(--red);border-color:var(--red);color:#fff}
+.ch-tab.on b{background:rgba(255,255,255,.22)}
+.ch-searchrow{display:flex;gap:.55rem;flex-wrap:wrap;align-items:center}
+.ch-searchrow .panel-search{flex:1;min-width:220px}
+.ch-searchrow .panel-search input{width:100%}
+.ch-more-btn{display:inline-flex;align-items:center;gap:.4rem;height:40px;padding:0 1rem;border-radius:999px;border:1.5px solid var(--line);background:#fff;color:var(--head);font:inherit;font-size:.82rem;font-weight:700;cursor:pointer}
+.ch-more-btn.on,.ch-more-btn:hover{border-color:var(--red);color:var(--red)}
+.ch-more-btn b{background:var(--red);color:#fff;border-radius:999px;font-size:.68rem;padding:.05rem .45rem}
+.ch-clear{font-size:.8rem;font-weight:700;color:#dc2626;text-decoration:none}
+.ch-more{display:none;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:.7rem;padding:.9rem;border-radius:14px;background:var(--bg-alt)}
+.ch-more.open{display:grid}
+.ch-more label{display:flex;flex-direction:column;gap:.3rem;font-size:.72rem;font-weight:800;color:var(--head);text-transform:uppercase;letter-spacing:.03em}
+.ch-more select,.ch-more input[type=date]{height:38px;border:1.5px solid var(--line);border-radius:10px;padding:0 .6rem;background:#fff;font:inherit;font-size:.83rem;text-transform:none;letter-spacing:0;color:var(--head);min-width:0}
+.ch-more .ch-dates span{display:flex;gap:.35rem}
+.ch-more .ch-dates input{flex:1}
+.ch-more .ch-check{flex-direction:row;align-items:center;gap:.45rem;text-transform:none;letter-spacing:0;font-size:.83rem;font-weight:700;align-self:end;height:38px}
+.ch-chips{display:flex;gap:.4rem;flex-wrap:wrap}
+.ch-chip{display:inline-flex;align-items:center;gap:.4rem;padding:.3rem .7rem;border-radius:999px;border:none;background:var(--red-soft);color:var(--red);font:inherit;font-size:.76rem;font-weight:700;cursor:pointer}
+.ch-chip:hover{background:rgba(var(--accent-rgb),.2)}
+.ch-row{display:flex;align-items:center;gap:.9rem;padding:.9rem 1.4rem;border-bottom:1px solid var(--line);color:inherit;text-decoration:none}
+.ch-row:hover{background:var(--bg-alt)}
+.ch-ava{flex:0 0 40px;width:40px;height:40px;border-radius:50%;background:var(--tint,#e9f7f1);color:var(--red);display:flex;align-items:center;justify-content:center;font-weight:800}
+.ch-main{flex:1;min-width:0}
+.ch-name{font-weight:800;color:var(--head)}
+.ch-meta{font-size:.74rem;color:var(--text);opacity:.85}
+.ch-last{font-size:.82rem;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:.15rem}
+.ch-last.pending{color:var(--head);font-weight:700}
+.ch-side{text-align:right;font-size:.74rem;color:var(--text);flex:0 0 auto}
+.ch-badge{display:inline-flex;min-width:22px;height:22px;padding:0 7px;border-radius:999px;background:#ef4444;color:#fff;font-weight:800;font-size:.72rem;align-items:center;justify-content:center;margin-top:.3rem}
+.ch-guest{display:inline-block;margin-left:.4rem;padding:.08rem .45rem;border-radius:999px;background:#f3f4f6;color:#6b7280;font-size:.66rem;font-weight:800;vertical-align:middle}
+.ch-on{display:inline-block;width:8px;height:8px;border-radius:50%;background:#22c55e;margin-left:.35rem;vertical-align:middle;box-shadow:0 0 0 3px rgba(34,197,94,.18)}
+.ch-ring{display:inline-flex;align-items:center;gap:.3rem;margin-left:.45rem;padding:.1rem .5rem;border-radius:999px;background:#dcfce7;color:#15803d;font-size:.68rem;font-weight:800;animation:chRing 1.2s infinite}
+@keyframes chRing{50%{opacity:.45}}
+.ch-ip{font-family:ui-monospace,Consolas,monospace}
+.ch-multi{display:inline-flex;align-items:center;gap:.3rem;margin-left:.3rem;padding:.08rem .5rem;border-radius:999px;background:#fef3c7;color:#92400e;font-size:.68rem;font-weight:800;cursor:pointer}
+.ch-multi:hover{background:#fde68a}
+.ch-ipbar{display:flex;align-items:center;gap:.6rem;padding:.7rem 1.4rem;background:#fffbeb;border-bottom:1px solid var(--line);font-size:.84rem;color:#92400e}
+.ch-ipbar a{margin-left:auto;font-weight:700;color:var(--red)}
+.ch-empty{padding:2.2rem 1.4rem;text-align:center;font-size:.88rem}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="panel" id="chList">
+  <div class="panel-head">
+    <h3>{{ chat_users|length }} chat{{ chat_users|length|pluralize }}{% if pending_chats %} · {{ pending_chats }} waiting for a reply{% endif %}</h3>
+  </div>
+  <form class="ch-filters" method="get" id="chFilters">
+    <input type="hidden" name="tab" value="{{ f.tab }}">
+    <div class="ch-tabs">
+      <a class="ch-tab{% if not f.tab %} on{% endif %}" data-tab="">All <b>{{ tab_counts.all }}</b></a>
+      <a class="ch-tab{% if f.tab == 'waiting' %} on{% endif %}" data-tab="waiting"><i class="fas fa-circle-exclamation"></i> Waiting for reply <b>{{ tab_counts.waiting }}</b></a>
+      <a class="ch-tab{% if f.tab == 'online' %} on{% endif %}" data-tab="online"><span class="ch-on" style="margin:0"></span> Online now <b>{{ tab_counts.online }}</b></a>
+      <a class="ch-tab{% if f.tab == 'accounts' %} on{% endif %}" data-tab="accounts"><i class="fas fa-user-check"></i> Accounts <b>{{ tab_counts.accounts }}</b></a>
+      <a class="ch-tab{% if f.tab == 'guests' %} on{% endif %}" data-tab="guests"><i class="fas fa-user-secret"></i> Guests <b>{{ tab_counts.guests }}</b></a>
+    </div>
+    <div class="ch-searchrow">
+      <span class="panel-search"><i class="fas fa-magnifying-glass"></i>
+        <input type="search" name="q" value="{{ q }}" placeholder="Search name, email, phone, city, IP or message text…"></span>
+      <button type="button" class="ch-more-btn{% if more_open %} on{% endif %}" id="chMoreBtn"><i class="fas fa-sliders"></i> More filters{% if chips %} <b>{{ chips|length }}</b>{% endif %}</button>
+      {% if filtered %}<a class="ch-clear" href="{% url 'dashboard_chats' %}"><i class="fas fa-xmark"></i> Clear all</a>{% endif %}
+    </div>
+    <div class="ch-more{% if more_open %} open{% endif %}" id="chMore">
+      <label>Reply status
+        <select name="reply"><option value="">Any</option>
+          <option value="waiting"{% if f.reply == 'waiting' %} selected{% endif %}>Last message from them</option>
+          <option value="replied"{% if f.reply == 'replied' %} selected{% endif %}>You replied last</option>
+          <option value="never"{% if f.reply == 'never' %} selected{% endif %}>Never replied</option></select></label>
+      <label>Type
+        <select name="who"><option value="">Accounts and guests</option>
+          <option value="accounts"{% if f.who == 'accounts' %} selected{% endif %}>Accounts only</option>
+          <option value="guests"{% if f.who == 'guests' %} selected{% endif %}>Guests only</option></select></label>
+      <label>Account
+        <select name="account"><option value="">Any</option>
+          <option value="verified"{% if f.account == 'verified' %} selected{% endif %}>Verified</option>
+          <option value="unverified"{% if f.account == 'unverified' %} selected{% endif %}>Not verified</option>
+          <option value="active"{% if f.account == 'active' %} selected{% endif %}>Active</option>
+          <option value="deactivated"{% if f.account == 'deactivated' %} selected{% endif %}>Deactivated</option></select></label>
+      <label>Chat contains
+        <select name="has"><option value="">Anything</option>
+          <option value="media"{% if f.has == 'media' %} selected{% endif %}>Any photo / video / file</option>
+          <option value="image"{% if f.has == 'image' %} selected{% endif %}>📷 Photos</option>
+          <option value="video"{% if f.has == 'video' %} selected{% endif %}>🎬 Videos</option>
+          <option value="file"{% if f.has == 'file' %} selected{% endif %}>📎 Documents</option>
+          <option value="location"{% if f.has == 'location' %} selected{% endif %}>📍 Location</option>
+          <option value="call"{% if f.has == 'call' %} selected{% endif %}>📞 Calls</option></select></label>
+      <label>Last active
+        <select name="when" id="chWhen"><option value="">Any time</option>
+          <option value="today"{% if f.when == 'today' %} selected{% endif %}>Today</option>
+          <option value="7"{% if f.when == '7' %} selected{% endif %}>Last 7 days</option>
+          <option value="30"{% if f.when == '30' %} selected{% endif %}>Last 30 days</option>
+          <option value="custom"{% if f.when == 'custom' %} selected{% endif %}>Pick dates…</option></select></label>
+      <label class="ch-dates"{% if f.when != 'custom' %} hidden{% endif %}>From – to
+        <span><input type="date" name="from" value="{{ f.from }}"><input type="date" name="to" value="{{ f.to }}"></span></label>
+      <label>State
+        <select name="state"><option value="">All states</option>
+          {% for st in states %}<option value="{{ st }}"{% if f.state == st %} selected{% endif %}>{{ st }}</option>{% endfor %}</select></label>
+      <label>Sort by
+        <select name="sort">
+          <option value="recent"{% if f.sort == 'recent' %} selected{% endif %}>Waiting first, then latest</option>
+          <option value="unread"{% if f.sort == 'unread' %} selected{% endif %}>Most unread</option>
+          <option value="most"{% if f.sort == 'most' %} selected{% endif %}>Most messages</option>
+          <option value="oldest"{% if f.sort == 'oldest' %} selected{% endif %}>Oldest activity</option>
+          <option value="newest"{% if f.sort == 'newest' %} selected{% endif %}>Newest first started</option>
+          <option value="name"{% if f.sort == 'name' %} selected{% endif %}>Name A–Z</option></select></label>
+      <label class="ch-check"><input type="checkbox" name="shared_ip" value="1"{% if f.shared_ip %} checked{% endif %}> Only IPs with several chats</label>
+      {% if f.ip %}<input type="hidden" name="ip" value="{{ f.ip }}">{% endif %}
+    </div>
+    {% if chips %}<div class="ch-chips">{% for key, text in chips %}<button type="button" class="ch-chip" data-clear="{{ key }}">{{ text }} <i class="fas fa-xmark"></i></button>{% endfor %}</div>{% endif %}
+  </form>
+  <div id="chRows">
+  {% for u in chat_users %}
+  <a class="ch-row" href="{% url 'dashboard_chat_thread' u.pk %}">
+    <span class="ch-ava">{{ u.name|first|upper }}</span>
+    <span class="ch-main">
+      <span class="ch-name">{{ u.name }}{% if u.is_guest %}<span class="ch-guest">Guest</span>{% endif %}{% if u.presence.online %}<span class="ch-on" title="Online now"></span>{% endif %}{% if u.ringing %}<span class="ch-ring"><i class="fas fa-phone"></i> calling — open to answer</span>{% endif %}</span>
+      <span class="ch-meta">{% if not u.is_guest %} · {{ u.email }} · {{ u.phone }} · {{ u.city }}, {{ u.state }}{% endif %}{% if u.ip %} · <span class="ch-ip">IP {{ u.ip }}</span>{% if u.same_ip > 1 %} <span class="ch-multi" data-ip="{{ u.ip }}" title="Show every chat from this IP"><i class="fas fa-users"></i> {{ u.same_ip }} chats from this IP</span>{% endif %}{% endif %}</span>
+      <div class="ch-last{% if u.pending %} pending{% endif %}">
+        {% if u.last_message %}{% if u.last_message.sender == 'admin' %}You: {% endif %}{% if u.last_message.kind == 'image' %}📷 Photo {% elif u.last_message.kind == 'video' %}🎬 Video {% elif u.last_message.kind == 'file' %}📎 {{ u.last_message.attachment_name }} {% elif u.last_message.kind == 'location' %}📍 {% elif u.last_message.kind == 'call' %}📞 {% endif %}{{ u.last_message.body|truncatechars:120 }}{% else %}No messages yet{% endif %}
+      </div>
+    </span>
+    <span class="ch-side">
+      {% if u.last_at %}{{ u.last_at|date:"d M, h:i A" }}{% else %}Joined {{ u.created_at|date:"d M" }}{% endif %}
+      {% if u.pending %}<br><span class="ch-badge" title="{{ u.pending }} unread">{{ u.pending }}</span>{% endif %}
+    </span>
+  </a>
+  {% empty %}
+  <div class="ch-empty">{% if filtered %}No chats match these filters. <a href="{% url 'dashboard_chats' %}">Clear all</a>{% else %}No chats yet. People who sign up on <a href="{% url 'chats_page' %}" target="_blank" rel="noopener">/chats</a> appear here.{% endif %}</div>
+  {% endfor %}
+  </div>
+</div>
+<script>
+(function () {
+  // Filters apply as soon as they change.
+  var form = document.getElementById('chFilters');
+  form.querySelectorAll('select, input[type=checkbox], input[type=date]').forEach(function (el) {
+    el.addEventListener('change', function () {
+      if (el.id === 'chWhen') {
+        form.querySelector('.ch-dates').hidden = el.value !== 'custom';
+        if (el.value === 'custom') return;
+      }
+      form.requestSubmit();
+    });
+  });
+  form.querySelectorAll('.ch-tab').forEach(function (t) {
+    t.addEventListener('click', function () { form.elements.tab.value = t.dataset.tab; form.requestSubmit(); });
+  });
+  document.getElementById('chMoreBtn').addEventListener('click', function () {
+    document.getElementById('chMore').classList.toggle('open'); this.classList.toggle('on');
+  });
+  form.querySelectorAll('.ch-chip').forEach(function (c) {
+    c.addEventListener('click', function () {
+      var key = c.dataset.clear;
+      (key === 'when' ? ['when', 'from', 'to'] : [key]).forEach(function (k) {
+        var el = form.elements[k];
+        if (!el) return;
+        if (el.type === 'checkbox') el.checked = false; else el.value = '';
+      });
+      form.requestSubmit();
+    });
+  });
+  // Empty fields stay out of the address.
+  form.addEventListener('submit', function () {
+    Array.prototype.forEach.call(form.elements, function (el) {
+      if (el.name && !el.value && el.type !== 'checkbox') el.disabled = true;
+    });
+  });
+})();
+(function () {
+  // "N chats from this IP" opens the list filtered to that IP (the row link itself opens the chat).
+  document.getElementById('chList').addEventListener('click', function (e) {
+    var tag = e.target.closest('.ch-multi');
+    if (!tag) return;
+    e.preventDefault(); e.stopPropagation();
+    location.href = '{% url "dashboard_chats" %}?ip=' + encodeURIComponent(tag.dataset.ip);
+  });
+})();
+(function () {
+  // Keeps the list, badges and online dots current without a reload.
+  setInterval(function () {
+    if (document.hidden || !document.getElementById('chRows')) return;
+    fetch(location.href, { credentials: 'same-origin' }).then(function (r) { return r.text(); }).then(function (html) {
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      var fresh = doc.getElementById('chRows'), rows = document.getElementById('chRows');
+      if (fresh && rows) rows.innerHTML = fresh.innerHTML;
+      var title = doc.querySelector('#chList .panel-head h3'), mine = document.querySelector('#chList .panel-head h3');
+      if (title && mine) mine.textContent = title.textContent;
+      var counts = doc.querySelectorAll('.ch-tab b');
+      document.querySelectorAll('.ch-tab b').forEach(function (b, n) { if (counts[n]) b.textContent = counts[n].textContent; });
+      var badge = doc.querySelector('.nav-group summary .nav-badge'), head = document.querySelector('.nav-group summary');
+      var old = head && head.querySelector('.nav-badge');
+      if (old) old.remove();
+      if (badge && head) head.insertBefore(badge, head.querySelector('.nav-caret'));
+    }).catch(function () {});
+  }, 6000);
+})();
+</script>
+{% endblock %}

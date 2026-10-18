@@ -1807,12 +1807,12 @@ class AIResponseReliabilityTests(TestCase):
         request = client.chat.completions.create.call_args.kwargs
         self.assertEqual(request['model'], ai_chat.MODELS['code']['id'])
         self.assertEqual(request['messages'][0]['role'], 'system')
-        self.assertIn('ChatGPT 5.6 in Vidhyora AI', request['messages'][0]['content'])
-        self.assertIn('not the official OpenAI gpt-5.6 API', request['messages'][0]['content'])
+        self.assertIn('ChatGPT 6 Luna in Vidhyora AI', request['messages'][0]['content'])
+        self.assertIn('not the official OpenAI model you are named as', request['messages'][0]['content'])
         system_text = '\n'.join(
             item['content'] for item in request['messages'] if item['role'] == 'system'
         )
-        self.assertIn('the only model name that may appear in your reply is ChatGPT 5.6', system_text)
+        self.assertIn('the only model name that may appear in your reply is ChatGPT 6', system_text)
 
     def test_a_short_reply_is_released_without_waiting_for_the_full_window(self):
         """A one-line answer is shorter than IDENTITY_CHECK_BUFFER_CHARS, so
@@ -1945,13 +1945,15 @@ class AIResponseReliabilityTests(TestCase):
 
         with self.settings(NVIDIA_API_KEYS=['key-one', 'key-two']), \
                 patch('myapp.ai_chat._get_client', return_value=client), \
+                patch('myapp.ai_chat._fallback_backends', return_value=[]), \
                 patch('myapp.ai_chat.time.sleep'):
             with self.assertRaises(KeyError401):
                 list(ai_chat.stream_chat(
                     [{'role': 'user', 'content': 'hello'}], model_key='quick',
                 ))
 
-        # Not a transient failure and there is no other key or model to try.
+        # Not a transient failure: never retried on the same key. Other models
+        # are tried as backups (test_busy_retry.BackupModelTests); none here.
         self.assertEqual(create.call_count, 1)
 
     def test_the_chat_uses_only_the_one_saved_key(self):
@@ -1988,7 +1990,8 @@ class AIResponseReliabilityTests(TestCase):
 
         self.assertEqual(calls, [0])
 
-    def test_unconfigured_dedicated_key_is_reported_and_never_rerouted_to_quick(self):
+    @patch('myapp.ai_chat._fallback_backends', return_value=[])
+    def test_unconfigured_dedicated_key_is_reported_when_no_backup_exists(self, _backups):
         create = Mock()
         used = []
 
@@ -2523,7 +2526,7 @@ class AIResponseReliabilityTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['X-Model-Key'], ai_chat.CHATGPT_56_MODEL_KEY)
         self.assertEqual(response['X-Routed-Model-Key'], ai_chat.CHATGPT_56_MODEL_KEY)
-        self.assertIn('ChatGPT 5.6', body)
+        self.assertIn('ChatGPT 6', body)
         for hidden_name in ('FLUX', 'NVIDIA', 'Nemotron', 'Vidhyora Code'):
             self.assertNotIn(hidden_name.lower(), body.lower())
         assistant = AIMessage.objects.get(role=AIMessage.ROLE_ASSISTANT)
@@ -5188,10 +5191,10 @@ class ApiSettingsPanelsTests(TestCase):
             'panel': 'sol', 'action': 'save', 'enabled': 'on', 'name__sol': 'Orion One', 'description__sol': 'Our best.',
         })
         self.assertEqual(ai_chat.chatgpt_persona_name(ai_chat.SOL_MODEL_KEY), 'Orion One')
-        self.assertEqual(ai_chat.chatgpt_persona_name(ai_chat.TERRA_MODEL_KEY), 'ChatGPT 5.6')
+        self.assertEqual(ai_chat.chatgpt_persona_name(ai_chat.TERRA_MODEL_KEY), 'GPT-5.6 Terra')
         from .views import _chatgpt_public_reply
         self.assertEqual(_chatgpt_public_reply('My name is Nemotron.', 'Orion One'), 'My name is Orion One.')
-        self.assertEqual(_chatgpt_public_reply('My name is Nemotron.'), 'My name is ChatGPT 5.6.')
+        self.assertEqual(_chatgpt_public_reply('My name is Nemotron.'), 'My name is ChatGPT 6.')
 
     def test_turning_image_generation_off_blocks_every_image_request(self):
         self.client.post(self.URL, {'panel': 'image', 'action': 'save'})

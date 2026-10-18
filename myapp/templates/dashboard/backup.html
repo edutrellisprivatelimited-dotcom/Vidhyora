@@ -217,6 +217,12 @@ document.querySelectorAll('[data-reveal]').forEach(function(button){
         </button>
         <p style="margin-top:.8rem;font-size:.8rem;color:#9aa3b0">A large backup can take a few minutes. It runs in the background, so you can leave this page.</p>
       </form>
+      {% if backup_running %}
+      <form method="post" action="{% url 'dashboard_backup_cancel' %}" onsubmit="return confirm('Stop this backup? Nothing new will be saved.');">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-block" style="background:#fff;color:#c0392b;border:1.5px solid #e5a29a"><i class="fas fa-circle-stop"></i> Cancel Backup</button>
+      </form>
+      {% endif %}
     </div>
   </div>
 

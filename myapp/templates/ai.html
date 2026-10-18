@@ -279,7 +279,8 @@ a{color:var(--red);text-decoration:none}
 .umap-show-names .umap-pin-name,.umap-pin:hover .umap-pin-name{opacity:1;transform:none}
 @keyframes umap-pulse{0%{transform:scale(.6);opacity:.9}100%{transform:scale(3.2);opacity:0}}
 .umap-cluster{background:none;border:none}
-.umap-cluster div{width:100%;height:100%;border-radius:50%;padding:5px;box-shadow:0 0 0 2px #fff,0 6px 16px rgba(8,12,18,.35);transition:transform .15s}
+.umap-cluster div{width:100%;height:100%;border-radius:50%;padding:5px;box-shadow:0 0 0 2px #fff,0 6px 16px rgba(8,12,18,.35);transition:transform .15s}
+
 .umap-cluster span{width:100%;height:100%;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#fff;color:#111418;font-family:var(--font-head);font-weight:800;font-size:.85rem}
 .umap-cluster:hover div{transform:scale(1.08)}
 .umap-me-dot{width:18px;height:18px;border-radius:50%;background:#2563eb;border:3px solid #fff;box-shadow:0 0 0 6px rgba(37,99,235,.25),0 2px 6px rgba(0,0,0,.3)}
@@ -1197,15 +1198,19 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
 .model-dropdown::-webkit-scrollbar-button{display:none;height:0}
 .model-option{display:flex;align-items:flex-start;gap:.7rem;width:100%;text-align:left;border:none;background:none;padding:.6rem .65rem;border-radius:12px;cursor:pointer;font-family:inherit;transition:background .15s}
 .model-option+.model-option{margin-top:.1rem}
-.model-option-text{display:flex;flex-direction:column;align-items:flex-start;gap:.18rem;min-width:0}
+.model-option-text{display:flex;flex-direction:column;align-items:flex-start;gap:.22rem;min-width:0;flex:1 1 100%}
+/* A small logo on the same line as the model's name. */
+.model-option-head{display:flex;align-items:center;gap:.5rem;min-width:0}
 /* The model's own mark, same glass tile as its chat avatar, just smaller. */
 .model-option-icon{position:relative;flex:0 0 34px;width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;overflow:hidden;
   background:linear-gradient(150deg,var(--m-hi,#3ddba6) 0%,var(--m-a,#10a37f) 45%,var(--m-b,#076b52) 100%);
   box-shadow:0 4px 12px var(--m-glow,rgba(var(--accent-rgb),.35)),inset 0 1px 0 rgba(255,255,255,.5),inset 0 -2px 4px rgba(0,0,0,.18);transition:transform .18s ease}
 .model-option-icon::after{content:'';position:absolute;inset:0;background:linear-gradient(145deg,rgba(255,255,255,.32),rgba(255,255,255,.08) 35%,transparent 55%);pointer-events:none}
+.model-option .model-option-icon{flex:0 0 22px;width:22px;height:22px;border-radius:7px}
+.model-option .model-option-icon svg{width:13px;height:13px}
 .model-option-icon svg{width:18px;height:18px;position:relative;z-index:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.25))}
 .model-option:hover .model-option-icon{transform:scale(1.06)}
-.model-option.active .model-option-icon{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--red),0 4px 12px var(--m-glow,rgba(var(--accent-rgb),.35))}
+.model-option.active .model-option-icon{box-shadow:0 0 0 2px var(--surface),0 0 0 3px var(--red),0 4px 12px var(--m-glow,rgba(var(--accent-rgb),.35))}
 .model-option:hover{background:var(--bg-alt)}
 .model-option:active{background:var(--line)}
 .model-option.active{background:var(--tint)}
@@ -1214,6 +1219,21 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
 .model-option-label{font-family:var(--font-head);font-size:.88rem;font-weight:800;letter-spacing:-.01em;line-height:1.25;color:var(--head)}
 .model-option.active .model-option-label{color:var(--red)}
 .model-option-desc{font-size:.73rem;font-weight:450;color:color-mix(in srgb,var(--text) 88%,transparent);line-height:1.45}
+/* Power (Low/Medium/High/Extra high), shown at the bottom right of the
+   selected model only. A span, not a button: the card itself is a button. */
+.model-option{flex-wrap:wrap}
+.model-power{display:none;flex-basis:100%;justify-content:flex-end;align-items:center;gap:.3rem;flex-wrap:wrap;margin-top:.15rem}
+.model-option.active .model-power{display:flex}
+.power-chip{display:inline-flex;align-items:center;gap:.32rem;padding:.26rem .6rem;border-radius:999px;border:1px solid color-mix(in srgb,var(--red) 45%,transparent);background:var(--surface);color:var(--red);font-size:.7rem;font-weight:800;cursor:pointer;line-height:1.2;user-select:none}
+.power-chip:hover,.power-chip[aria-expanded="true"]{background:color-mix(in srgb,var(--red) 12%,var(--surface))}
+.power-chip:focus-visible,.power-pill:focus-visible{outline:2px solid var(--red);outline-offset:2px}
+.power-chip .fa-chevron-down{font-size:.64rem;width:.7em;text-align:center;transition:transform .15s}
+.power-chip[aria-expanded="true"] .fa-chevron-down{transform:rotate(180deg)}
+.power-menu{display:none;flex-basis:100%;justify-content:flex-end;gap:.3rem;flex-wrap:wrap}
+.model-power.open .power-menu{display:flex}
+.power-pill{padding:.28rem .62rem;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--text);font-size:.7rem;font-weight:700;cursor:pointer;user-select:none}
+.power-pill:hover{border-color:var(--red);color:var(--red)}
+.power-pill[aria-checked="true"]{background:var(--red);border-color:var(--red);color:#fff}
 .model-option-lock{display:inline-flex;align-items:center;gap:.25rem;margin-top:.2rem;color:var(--red);font-size:.64rem;font-weight:800;text-transform:uppercase;letter-spacing:.03em}
 .msg-model-tag{font-size:.66rem;font-weight:800;color:var(--red);margin-bottom:.35rem;text-transform:uppercase;letter-spacing:.04em}
 
@@ -2486,13 +2506,13 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
           {# Only accounts that already have full model access keep seeing the ChatGPT-branded call-out. #}
           <p class="empty-lead">
             Full access to
-            <span class="hl-model">ChatGPT&nbsp;5.6 Sol, Terra &amp; Luna</span> —
+            <span class="hl-model">ChatGPT&nbsp;6 Sol, 5.6&nbsp;Terra &amp; 6&nbsp;Luna</span> —
             with deep reasoning, coding, vision and image generation, all in one place.
           </p>
           <ul class="empty-models" aria-label="Featured AI models">
-            <li>5.6 Sol</li>
+            <li>6 Sol</li>
             <li>5.6 Terra</li>
-            <li>5.6 Luna</li>
+            <li>6 Luna</li>
           </ul>
           {% else %}
           {# New/free accounts and signed-out guests see the brand-named line and badges only. #}
@@ -2565,12 +2585,27 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
           <div class="model-dropdown" id="modelDropdown" hidden>
             {% for m in ai_models %}
             <button type="button" class="model-option{% if m.key == ai_default_model %} active{% endif %}{% if m.locked %} locked{% endif %}" data-model="{{ m.key }}" data-label="{{ m.label }}" data-locked="{% if m.locked %}1{% else %}0{% endif %}"{% if m.locked %} aria-disabled="true"{% endif %}>
-              <span class="model-option-icon" data-m="{{ m.key }}" aria-hidden="true"></span>
               <span class="model-option-text">
-                <span class="model-option-label">{{ m.label }}</span>
+                <span class="model-option-head">
+                  <span class="model-option-icon" data-m="{{ m.key }}" aria-hidden="true"></span>
+                  <span class="model-option-label">{{ m.label }}</span>
+                </span>
                 <span class="model-option-desc">{{ m.description }}</span>
                 {% if m.locked %}<span class="model-option-lock"><i class="fas fa-lock"></i> Premium</span>{% endif %}
               </span>
+              {% if m.power and not m.locked %}
+              <span class="model-power" data-power-for="{{ m.key }}">
+                <span class="power-chip" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false" title="How hard the AI thinks before answering">
+                  <i class="fas fa-bolt" aria-hidden="true"></i> <span class="power-chip-label">Medium</span> <i class="fas fa-chevron-down" aria-hidden="true"></i>
+                </span>
+                <span class="power-menu" role="radiogroup" aria-label="Power">
+                  <span class="power-pill" role="radio" tabindex="0" data-power="low" title="Fastest, short answers">Low</span>
+                  <span class="power-pill" role="radio" tabindex="0" data-power="medium" title="Balanced (default)">Medium</span>
+                  <span class="power-pill" role="radio" tabindex="0" data-power="high" title="Thinks first, slower">High</span>
+                  <span class="power-pill" role="radio" tabindex="0" data-power="xhigh" title="Thinks longest, slowest">Extra high</span>
+                </span>
+              </span>
+              {% endif %}
             </button>
             {% endfor %}
           </div>
@@ -4818,7 +4853,51 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
       if (modelPickerBtn.disabled) return;
       modelDropdown.hidden ? openDropdown() : closeDropdown();
     });
+    // ---- power level for each model (remembered per model on this device) ----
+    var POWER_LABELS = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high' };
+    var modelPower = {};
+    try { modelPower = JSON.parse(localStorage.getItem('ai_model_power') || '{}') || {}; } catch (err) { modelPower = {}; }
+    function powerFor(key){ return POWER_LABELS[modelPower[key]] ? modelPower[key] : 'medium'; }
+    function showPower(box){
+      var level = powerFor(box.getAttribute('data-power-for'));
+      box.querySelector('.power-chip-label').textContent = POWER_LABELS[level];
+      box.querySelectorAll('.power-pill').forEach(function(p){
+        p.setAttribute('aria-checked', p.getAttribute('data-power') === level ? 'true' : 'false');
+      });
+    }
+    function togglePowerMenu(box, open){
+      box.classList.toggle('open', open);
+      box.querySelector('.power-chip').setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    modelDropdown.querySelectorAll('.model-power').forEach(showPower);
+    window.aiCurrentPower = function(){ return powerFor(currentModel); };
+    function handlePower(target){
+      var box = target.closest('.model-power');
+      if (!box) return false;
+      var pill = target.closest('.power-pill');
+      if (pill) {
+        modelPower[box.getAttribute('data-power-for')] = pill.getAttribute('data-power');
+        try { localStorage.setItem('ai_model_power', JSON.stringify(modelPower)); } catch (err) {}
+        showPower(box);
+        togglePowerMenu(box, false);
+        showAiToast('Power set to ' + POWER_LABELS[pill.getAttribute('data-power')] + '.');
+      } else if (target.closest('.power-chip')) {
+        togglePowerMenu(box, !box.classList.contains('open'));
+      }
+      return true;
+    }
+    modelDropdown.addEventListener('keydown', function(e){
+      if ((e.key === 'Enter' || e.key === ' ') && e.target.closest('.power-chip, .power-pill')) {
+        e.preventDefault();
+        e.stopPropagation();
+        handlePower(e.target);
+      }
+    });
+
     modelDropdown.addEventListener('click', function(e){
+      // The power control sits inside the selected model's card; using it
+      // must not re-select the model or close the menu.
+      if (handlePower(e.target)) { e.stopPropagation(); return; }
       var opt = e.target.closest('.model-option');
       if (!opt || state.streaming || state.gated) return;
       if (opt.getAttribute('data-locked') === '1') {
@@ -8731,7 +8810,7 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
       signal: abortController.signal,
       body: JSON.stringify({
-        conversation_id: state.currentConversationId, message: text, model: currentModel,
+        conversation_id: state.currentConversationId, message: text, model: currentModel, power: window.aiCurrentPower ? window.aiCurrentPower() : undefined,
         replace_message_id: replacing ? replacing.id : undefined,
       }),
     }).then(function(resp){
@@ -8919,7 +8998,7 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
       signal: abortController.signal,
       body: JSON.stringify({
-        conversation_id: state.currentConversationId, message: text, model: currentModel, language: currentLanguage,
+        conversation_id: state.currentConversationId, message: text, model: currentModel, power: window.aiCurrentPower ? window.aiCurrentPower() : undefined, language: currentLanguage,
         replace_message_id: replacing ? replacing.id : undefined,
       }),
     }).then(function(resp){
@@ -9258,7 +9337,7 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
       signal: abortController.signal,
       body: JSON.stringify({
-        conversation_id: state.currentConversationId, message: ctx.text, model: currentModel, language: currentLanguage,
+        conversation_id: state.currentConversationId, message: ctx.text, model: currentModel, power: window.aiCurrentPower ? window.aiCurrentPower() : undefined, language: currentLanguage,
         title: plan.title, steps: plan.steps,
         replace_message_id: ctx.replacing ? ctx.replacing.id : undefined,
       }),
@@ -9565,7 +9644,7 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
       signal: abortController.signal,
       body: JSON.stringify({
-        conversation_id: state.currentConversationId, message: text, model: currentModel, image: imageToSend,
+        conversation_id: state.currentConversationId, message: text, model: currentModel, power: window.aiCurrentPower ? window.aiCurrentPower() : undefined, image: imageToSend,
         document_text: documentTextToSend,
         document_name: documentToSend ? documentToSend.name : undefined,
         document_mode: documentToSend ? documentToSend.mode : undefined,

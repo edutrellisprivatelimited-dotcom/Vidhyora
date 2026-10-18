@@ -550,6 +550,11 @@ class AIConversation(models.Model):
     # not just within one rate-limit window. Null when the request's IP
     # couldn't be determined at all (never set to the literal 'unknown').
     ip_address  = models.GenericIPAddressField(null=True, blank=True, db_index=True)
+    # A running summary of the older messages, sent to the model in their
+    # place so a long chat stays short (see myapp.context_compress). It covers
+    # every live message up to and including the one with this pk.
+    context_summary = models.TextField(blank=True)
+    context_summary_until = models.BigIntegerField(default=0)
     created_at  = models.DateTimeField(auto_now_add=True)
     updated_at  = models.DateTimeField(auto_now_add=True)
 
@@ -1391,3 +1396,119 @@ class AICodingRequest(models.Model):
 
     def __str__(self):
         return f'OpenCode request #{self.pk}'
+
+
+class ContactSubmission(models.Model):
+    """A message sent from the /home page's contact form, or an email left in
+    its newsletter box. Listed on the dashboard's Contact Form Data page."""
+    SOURCE_CONTACT = 'contact'
+    SOURCE_NEWSLETTER = 'newsletter'
+    SOURCE_CHOICES = [(SOURCE_CONTACT, 'Contact form'), (SOURCE_NEWSLETTER, 'Newsletter')]
+
+    source = models.CharField(max_length=12, choices=SOURCE_CHOICES, default=SOURCE_CONTACT, db_index=True)
+    name = models.CharField(max_length=150, blank=True)
+    email = models.EmailField()
+    phone = models.CharField(max_length=30, blank=True)
+    service = models.CharField(max_length=40, blank=True)
+    message = models.TextField(blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Contact form entry'
+        verbose_name_plural = 'Contact form entries'
+
+    def __str__(self):
+        return f'{self.get_source_display()}: {self.name or self.email}'
+
+
+# ── /chats: a support chat with its own accounts ─────────────────────────────
+# Deliberately separate from django.contrib.auth: a /chats account cannot log
+# in to the AI page or the dashboard, and the reverse. See myapp.support_chat.
+class ChatUser(models.Model):
+    name = models.CharField(max_length=120)
+    email = models.EmailField(unique=True)
+    phone = models.CharField(max_length=20)
+    state = models.CharField(max_length=60)
+    city = models.CharField(max_length=80)
+    password = models.CharField(max_length=128)   # a django.contrib.auth.hashers hash
+    # Shown as "verification needed" — nothing verifies it yet.
+    is_verified = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+    photo = models.ImageField(upload_to='support_chat/users/', blank=True)
+    # Turned off by staff: can't log in, and is logged out of open chats.
+    is_active = models.BooleanField(default=True)
+    # Chatting without an account; becomes a normal account on sign-up.
+    is_guest = models.BooleanField(default=False, db_index=True)
+    ip = models.CharField(max_length=64, blank=True, db_index=True)        # where the chat was started
+    last_ip = models.CharField(max_length=64, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Chat user'
+
+    def __str__(self):
+        return f'{self.name} <{self.email}>'
+
+
+class ChatPasswordReset(models.Model):
+    user = models.ForeignKey(ChatUser, on_delete=models.CASCADE, related_name='password_resets')
+    token_hash = models.CharField(max_length=64, unique=True)   # sha256 of the emailed token
+    created_at = models.DateTimeField(auto_now_add=True)
+    used = models.BooleanField(default=False)
+
+
+class ChatMessage(models.Model):
+    SENDER_USER = 'user'
+    SENDER_ADMIN = 'admin'
+    SENDER_CHOICES = [(SENDER_USER, 'User'), (SENDER_ADMIN, 'Admin')]
+
+    KIND_TEXT = 'text'
+    KIND_IMAGE = 'image'
+    KIND_VIDEO = 'video'
+    KIND_FILE = 'file'
+    KIND_LOCATION = 'location'
+    KIND_CALL = 'call'
+    KIND_CHOICES = [(KIND_TEXT, 'Text'), (KIND_IMAGE, 'Photo'), (KIND_VIDEO, 'Video'), (KIND_FILE, 'File'),
+                    (KIND_LOCATION, 'Location'), (KIND_CALL, 'Call')]
+
+    user = models.ForeignKey(ChatUser, on_delete=models.CASCADE, related_name='messages')
+    sender = models.CharField(max_length=5, choices=SENDER_CHOICES)
+    kind = models.CharField(max_length=8, choices=KIND_CHOICES, default=KIND_TEXT)
+    body = models.TextField(blank=True)   # the text, a caption, or the call summary
+    # Served only through support_chat.attachment, which checks who is asking.
+    attachment = models.FileField(upload_to='support_chat/%Y/%m/', blank=True)
+    attachment_name = models.CharField(max_length=200, blank=True)
+    latitude = models.FloatField(null=True, blank=True)
+    longitude = models.FloatField(null=True, blank=True)
+    # A live location keeps updating until this time (None = a one-off pin).
+    live_until = models.DateTimeField(null=True, blank=True)
+    location_updated_at = models.DateTimeField(null=True, blank=True)
+    # A user message is "pending" until an admin opens that chat.
+    read_by_admin = models.BooleanField(default=False, db_index=True)
+    # An admin reply is "seen" (blue ticks) once the user's open chat loads it.
+    read_by_user = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at', 'pk']
+
+
+class SupportProfile(models.Model):
+    """How the support team appears to people on /chats (one row)."""
+    display_name = models.CharField(max_length=60, default='Support')
+    about = models.CharField(max_length=120, default='We usually reply within a few hours')
+    welcome = models.CharField(max_length=300, default='Send us a message, a photo or your location — our team will reply here.')
+    photo = models.ImageField(upload_to='support_chat/profile/', blank=True)
+    # Shown on /chats "Forgot password" — people write here to get back in.
+    support_email = models.EmailField(default='shifn32@gmail.com', blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    @classmethod
+    def load(cls):
+        return cls.objects.get_or_create(pk=1)[0]
+
+    def __str__(self):
+        return self.display_name

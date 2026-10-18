@@ -32,6 +32,9 @@ from django.templatetags.static import static as static_url
 from django.http import JsonResponse, StreamingHttpResponse, FileResponse, HttpResponse
 from django.core.files.base import ContentFile
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
+from django.core.paginator import Paginator
+from django.views.decorators.http import require_POST
 from django.core.files.storage import default_storage
 from django.core.management import call_command
 from django.conf import settings
@@ -39,10 +42,11 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from datetime import datetime, timedelta, timezone as dt_timezone
 from myapp.forms import PhoneVerifyForm, AILoginForm, SignupEditForm, AIProfileEditForm, AIPasswordChangeForm, PaymentSettingsForm, PWASettingsForm, GrantAISubscriptionForm, GrantAPIAccessForm, AddUserForm, SiteCustomizationForm, MAX_AMOUNT_PAID
-from myapp.models import StoreProfile, Order, OrderItem, PaymentSettings, Payment, DropboxSettings, PhoneVerification, PWASettings, SiteCustomization, AIAccountMessageSettings, AIConversation, AIMessage, AIBlock, AINote, AIReport, AIGeneratedFile, AIUserImage, GitHubConnection, YouTubeDownloadJob, AIAPIAccess, AIAPIKey, ProviderAPICredential, AIVideoJob
+from myapp.models import ContactSubmission, StoreProfile, Order, OrderItem, PaymentSettings, Payment, DropboxSettings, PhoneVerification, PWASettings, SiteCustomization, AIAccountMessageSettings, AIConversation, AIMessage, AIBlock, AINote, AIReport, AIGeneratedFile, AIUserImage, GitHubConnection, YouTubeDownloadJob, AIAPIAccess, AIAPIKey, ProviderAPICredential, AIVideoJob
 from myapp import dropbox_backup
 from myapp import dropbox_images
 from myapp import ai_chat
+from myapp import context_compress
 from myapp import media_models
 from myapp import video_generation
 from myapp import chat_export
@@ -2491,6 +2495,16 @@ def dashboard_backup_run(request):
 
 
 @dashboard_staff_required
+def dashboard_backup_cancel(request):
+    if request.method == 'POST':
+        if dropbox_backup.cancel_backup_job():
+            messages.success(request, 'Backup cancelled. Nothing new was saved, and you can start a fresh backup now.')
+        else:
+            messages.info(request, 'No backup was running.')
+    return redirect('dashboard_backup')
+
+
+@dashboard_staff_required
 def dashboard_backup_restore(request):
     if request.method == 'POST':
         settings_obj = DropboxSettings.get_solo()
@@ -2539,6 +2553,122 @@ def dashboard_backup_delete_all(request):
         except dropbox_backup.BackupError as exc:
             messages.error(request, str(exc))
     return redirect('dashboard_backup')
+
+
+# ── /home landing page and its forms ─────────────────────────────────────────
+HOME_FORM_LIMIT = 10              # contact + newsletter posts per hour, per IP
+HOME_FORM_WINDOW = 60 * 60
+HOME_SERVICES = {
+    'ai-subscription': 'AI Model Subscription', 'meta-ads': 'Meta Advertising',
+    'google-ads': 'Google Advertising', 'youtube-ads': 'YouTube Advertising',
+    'seo': 'Search Engine Optimization', 'smo': 'Social Media Optimization',
+    'website': 'Custom Web Development', 'school-erp': 'School ERP System',
+    'lms': 'Learning Management System', 'edu-website': 'Educational Portal',
+}
+
+
+def home_page(request):
+    return render(request, 'home.html')
+
+
+def _home_form_allowed(request):
+    """A light per-IP limit so the public forms can't be used to flood the
+    dashboard. Returns the IP (may be None) or False when over the limit."""
+    ip = _client_ip(request)
+    key = f'home-form-{ip or "unknown"}'
+    count = cache.get(key, 0)
+    if count >= HOME_FORM_LIMIT:
+        return False
+    cache.set(key, count + 1, HOME_FORM_WINDOW)
+    return ip
+
+
+def _home_email(value):
+    from django.core.validators import validate_email
+    value = (value or '').strip()[:254]
+    try:
+        validate_email(value)
+    except ValidationError:
+        return ''
+    return value
+
+
+@require_POST
+def contact_submit(request):
+    ip = _home_form_allowed(request)
+    if ip is False:
+        return JsonResponse({'ok': False, 'error': 'Too many messages from your connection. Please try again in an hour.'}, status=429)
+    name = request.POST.get('name', '').strip()[:150]
+    email = _home_email(request.POST.get('email'))
+    service = request.POST.get('service', '').strip()
+    message = request.POST.get('message', '').strip()[:5000]
+    if not name or not message:
+        return JsonResponse({'ok': False, 'error': 'Please fill in your name and message.'}, status=400)
+    if not email:
+        return JsonResponse({'ok': False, 'error': 'Please enter a valid email address.'}, status=400)
+    if service not in HOME_SERVICES:
+        return JsonResponse({'ok': False, 'error': 'Please choose the service you need.'}, status=400)
+    ContactSubmission.objects.create(
+        source=ContactSubmission.SOURCE_CONTACT, name=name, email=email,
+        phone=request.POST.get('phone', '').strip()[:30], service=service, message=message,
+        ip_address=ip or None,
+    )
+    return JsonResponse({'ok': True})
+
+
+@require_POST
+def newsletter_submit(request):
+    ip = _home_form_allowed(request)
+    if ip is False:
+        return JsonResponse({'ok': False, 'error': 'Too many requests. Please try again in an hour.'}, status=429)
+    email = _home_email(request.POST.get('email'))
+    if not email:
+        return JsonResponse({'ok': False, 'error': 'Please enter a valid email address.'}, status=400)
+    ContactSubmission.objects.get_or_create(
+        source=ContactSubmission.SOURCE_NEWSLETTER, email__iexact=email,
+        defaults={'email': email, 'ip_address': ip or None},
+    )
+    return JsonResponse({'ok': True})
+
+
+@dashboard_staff_required
+def dashboard_contact_forms(request):
+    q = request.GET.get('q', '').strip()
+    source = request.GET.get('type', 'all')
+    entries = ContactSubmission.objects.all()
+    if source in (ContactSubmission.SOURCE_CONTACT, ContactSubmission.SOURCE_NEWSLETTER):
+        entries = entries.filter(source=source)
+    else:
+        source = 'all'
+    if q:
+        entries = entries.filter(
+            Q(name__icontains=q) | Q(email__icontains=q) | Q(phone__icontains=q) | Q(message__icontains=q)
+        )
+    today = timezone.localdate()
+    all_entries = ContactSubmission.objects.all()
+    stats = {
+        'contact': all_entries.filter(source=ContactSubmission.SOURCE_CONTACT).count(),
+        'newsletter': all_entries.filter(source=ContactSubmission.SOURCE_NEWSLETTER).count(),
+        'today': all_entries.filter(created_at__date=today).count(),
+    }
+    paginator = Paginator(entries, 50)
+    page = paginator.get_page(request.GET.get('page'))
+    for entry in page:
+        entry.service_label = HOME_SERVICES.get(entry.service, entry.service)
+    return render(request, 'dashboard/contact_forms.html', {
+        'active': 'contact_forms', 'page': page, 'q': q, 'source': source,
+        'stats': stats, 'match_count': paginator.count,
+    })
+
+
+@dashboard_staff_required
+def dashboard_contact_form_delete(request, pk):
+    if request.method == 'POST':
+        deleted, _ = ContactSubmission.objects.filter(pk=pk).delete()
+        if deleted:
+            messages.success(request, 'Entry deleted.')
+    back = request.POST.get('next', '')
+    return redirect(back if back.startswith('/store/dashboard/contact-forms/') else 'dashboard_contact_forms')
 
 
 def dashboard_logout(request):
@@ -3341,6 +3471,7 @@ def ai_page(request):
             'label': cfg['label'],
             'description': cfg['description'],
             'locked': not ai_full_model_access and key not in AI_FREE_MODEL_KEYS,
+            'power': not cfg.get('image_generation'),
         }
         for key, cfg in ai_chat.MODELS.items()
         if key != 'vision' and not cfg.get('hidden_from_picker', False)
@@ -3998,7 +4129,7 @@ def _normalize_ai_home_links(reply):
     return re.sub(r'[ \t]{2,}', ' ', text)
 
 
-def _chatgpt_public_reply(reply, name='ChatGPT 5.6'):
+def _chatgpt_public_reply(reply, name='ChatGPT 6'):
     """Keep routed worker identities out of ChatGPT-visible response text.
 
     Runs over the whole visible reply, not just its opening — ai_chat's
@@ -4185,11 +4316,10 @@ def _ai_flux_response(conversation, prompt, source_image, response_model_key=Non
     except image_generation.ImageGenerationError as exc:
         model_controls.record_error(ai_chat.FLUX_KLEIN_4B_MODEL_KEY, str(exc))
         service_down = exc.status_code == 503 and not exc.blocked and not exc.editing_unavailable
-        detail = (
-            _chatgpt_image_error_detail(exc, display_model_key)
-            if display_model_key == ai_chat.CHATGPT_56_MODEL_KEY
-            else str(exc)
-        )
+        # Every picked model, not only Luna: a raw error can name the image
+        # model, NVIDIA or a key setting, which reads as a different model
+        # answering than the one the user picked.
+        detail = _chatgpt_image_error_detail(exc, display_model_key)
         if service_down:
             detail = f'Image generation is currently unavailable. Please contact the administrator at {_support_email()}.'
         response = JsonResponse(
@@ -5091,14 +5221,24 @@ def _ai_chat_send(request):
 
     recent = list(
         _ai_visible_messages(request, conversation).order_by('-created_at')
-        .values('role', 'content', 'image_data', 'document_name', 'document_text', 'reply_to_text')[:AI_CHAT_MAX_HISTORY]
+        .values('pk', 'role', 'content', 'image_data', 'document_name', 'document_text', 'reply_to_text')[:AI_CHAT_MAX_HISTORY]
     )
     recent.reverse()
 
     model_cfg = ai_chat.MODELS[model_key]
 
+    # Older messages already folded into the conversation's running summary
+    # are sent as that summary instead (see myapp.context_compress). An
+    # edit/retry of a message the summary covers makes it stale, so it goes.
+    replace_from = getattr(request, '_ai_replace_from_pk', None)
+    if replace_from:
+        context_compress.forget_summary(conversation, replace_from)
+    summary_until = conversation.context_summary_until if conversation.context_summary else 0
+
     clean_history = []
     for index, m in enumerate(recent):
+        if m['pk'] <= summary_until and index < len(recent) - 1:
+            continue
         is_current_image = bool(m['image_data']) and index == len(recent) - 1
         if is_current_image and model_cfg['vision']:
             ocr_note = f"\n\nLocally detected text:\n{m['document_text']}" if m['document_text'] else ''
@@ -5127,6 +5267,14 @@ def _ai_chat_send(request):
             # Older row from before document_text was persisted — degrade
             # to a plain filename note instead of silently having nothing.
             content = (m['content'] + f" [Attached document: {m['document_name']}]").strip()
+        elif m['role'] == AIMessage.ROLE_USER and len(m['content'] or '') > context_compress.LONG_MESSAGE_CHARS:
+            # A very long message goes with its middle shortened: the one being
+            # answered now is condensed on the spot, an earlier one reuses the
+            # copy made when it was sent. The saved message itself is unchanged.
+            if index == len(recent) - 1 and not generated_file_spec and not document_instruction:
+                content = context_compress.condense_long_message(m['content']) or m['content']
+            else:
+                content = context_compress.cached_condensed(m['content']) or m['content']
         else:
             content = m['content']
         if m['reply_to_text'] and m['role'] == AIMessage.ROLE_USER:
@@ -5166,6 +5314,12 @@ def _ai_chat_send(request):
             for block in content:
                 if block.get('type') == 'text':
                     block['text'] = privacy.redact(block.get('text', ''))
+
+    if summary_until:
+        clean_history.insert(0, {
+            'role': 'system',
+            'content': privacy.redact(context_compress.summary_note(conversation.context_summary)),
+        })
 
     user_context = _ai_user_context(request.user) if request.user.is_authenticated else None
     if user_context:
@@ -5228,6 +5382,9 @@ def _ai_chat_send(request):
         str(item.get('content') or '') for item in recent[-5:]
         if isinstance(item.get('content'), str)
     )
+    power = payload.get('power')
+    if power not in ai_chat.POWER_LEVELS:
+        power = ai_chat.DEFAULT_POWER
     web_search_enabled = payload.get('web_search') is True
     if (
         web_search_enabled and message and not image_data and not document_text
@@ -5298,6 +5455,7 @@ def _ai_chat_send(request):
                 else None
             ),
             onboarding_ask=onboarding_ask,
+            power=power,
         )
 
     def event_stream():
@@ -5490,6 +5648,7 @@ def _ai_chat_send(request):
                             content=message_reply, model_key=response_model_key,
                             web_sources=web_sources,
                         )
+                        context_compress.schedule_fold(conversation)
                 except Exception:
                     logger.exception("Failed to save AI assistant reply for conversation %s", conversation.pk)
 

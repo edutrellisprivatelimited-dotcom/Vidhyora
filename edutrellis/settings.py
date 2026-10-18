@@ -71,6 +71,7 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
                 'myapp.business_info.context_processor',
                 'myapp.views.site_customization_context',
+                'myapp.support_chat.dashboard_context',
             ],
         },
     },
@@ -198,6 +199,10 @@ DROPBOX_IMAGE_ARCHIVE_ENABLED = not (
     'test' in sys.argv
     or os.path.basename(sys.argv[0] if sys.argv else '').startswith(('pytest', 'py.test'))
 )
+
+# Long messages and long chats are shortened before they reach the chat model
+# (myapp.context_compress). Off under tests so no test calls the real model.
+AI_CONTEXT_COMPRESSION_ENABLED = DROPBOX_IMAGE_ARCHIVE_ENABLED
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

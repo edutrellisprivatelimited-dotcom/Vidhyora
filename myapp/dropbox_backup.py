@@ -65,6 +65,10 @@ def _upload(dbx, content, remote_path, mode):
     )
 
 
+class BackupCancelled(Exception):
+    """Raised inside a background backup once the admin presses Cancel."""
+
+
 class BackupError(Exception):
     """Raised for any Dropbox/backup failure with a message safe to show the admin.
 
@@ -328,7 +332,9 @@ def create_backup(settings_obj, *, missing_images=None, progress=None):
             bundle_path = Path(folder) / 'bundle.zip'
             with zipfile.ZipFile(bundle_path, 'w', zipfile.ZIP_DEFLATED, compresslevel=1) as archive:
                 archive.write(snapshot, 'db.sqlite3')
-                for name, storage in _image_files():
+                for count, (name, storage) in enumerate(_image_files(), 1):
+                    if count % 25 == 0:
+                        say(f'Packing the database and images… ({count} images so far)')
                     try:
                         with storage.open(name, 'rb') as image:
                             image_data = image.read()
@@ -357,7 +363,7 @@ def create_backup(settings_obj, *, missing_images=None, progress=None):
         if missing_images is not None:
             missing_images.extend(skipped)
         return filename
-    except BackupError:
+    except (BackupError, BackupCancelled):
         raise
     except Exception as exc:
         raise _connection_error(exc, 'The backup was not saved to Dropbox.')
@@ -369,13 +375,16 @@ def create_backup(settings_obj, *, missing_images=None, progress=None):
 # status lives in a small file so every server process sees the same state.
 STATUS_FILE = Path(tempfile.gettempdir()) / 'vidhyora_dropbox_backup.json'
 JOB_STALE_SECONDS = 60 * 60
+# A running job writes its progress at least every few minutes; silence this
+# long means the server restarted and the thread died with it.
+JOB_SILENT_SECONDS = 15 * 60
 _job_lock = threading.Lock()
 
 
 def _write_status(**fields):
     try:
         current = job_status() or {}
-        current.update(fields)
+        current.update(fields, updated=time.time())
         STATUS_FILE.write_text(json.dumps(current), encoding='utf-8')
     except OSError:
         logger.warning('Could not write the backup status file', exc_info=True)
@@ -387,7 +396,10 @@ def job_status():
         status = json.loads(STATUS_FILE.read_text(encoding='utf-8'))
     except (OSError, ValueError):
         return None
-    if status.get('state') == 'running' and time.time() - status.get('started', 0) > JOB_STALE_SECONDS:
+    now = time.time()
+    if status.get('state') == 'running' and (
+            now - status.get('started', 0) > JOB_STALE_SECONDS
+            or now - status.get('updated', now) > JOB_SILENT_SECONDS):
         status.update(state='error', message='The backup stopped before it finished. Please start it again.', seen=False)
     return status
 
@@ -396,24 +408,52 @@ def mark_status_seen():
     _write_status(seen=True)
 
 
+def cancel_backup_job():
+    """Stop the running backup. The page is freed at once; the worker thread
+    notices at its next step and quits without saving. False when none runs."""
+    with _job_lock:
+        status = job_status()
+        if not status or status.get('state') != 'running':
+            return False
+        _write_status(state='cancelled', message='The backup was cancelled. Nothing new was saved.', seen=True)
+        return True
+
+
 def start_backup_job(settings_obj):
     """Start a backup in the background. False when one is already running."""
     with _job_lock:
         status = job_status()
         if status and status.get('state') == 'running':
             return False
-        _write_status(state='running', started=time.time(), message='Starting…', seen=False, filename='', skipped=[])
+        job = f'{time.time():.6f}'
+        _write_status(state='running', job=job, started=time.time(), message='Starting…', seen=False, filename='', skipped=[])
+
+    def still_mine():
+        current = job_status() or {}
+        return current.get('job') == job and current.get('state') == 'running'
+
+    def progress(text):
+        if not still_mine():
+            raise BackupCancelled()
+        _write_status(message=text)
+
+    def finish(**fields):
+        with _job_lock:
+            if still_mine():
+                _write_status(seen=False, **fields)
 
     def run():
         try:
             skipped = []
-            filename = create_backup(settings_obj, missing_images=skipped, progress=lambda text: _write_status(message=text))
-            _write_status(state='done', message=f'Backup saved to Dropbox as "{filename}".', filename=filename, skipped=skipped[:20], seen=False)
+            filename = create_backup(settings_obj, missing_images=skipped, progress=progress)
+            finish(state='done', message=f'Backup saved to Dropbox as "{filename}".', filename=filename, skipped=skipped[:20])
+        except BackupCancelled:
+            logger.info('Dropbox backup cancelled by the admin')
         except BackupError as exc:
-            _write_status(state='error', message=str(exc), seen=False)
+            finish(state='error', message=str(exc))
         except Exception as exc:
             logger.exception('Background Dropbox backup failed')
-            _write_status(state='error', message=f'The backup failed unexpectedly ({exc.__class__.__name__}). Please try again.', seen=False)
+            finish(state='error', message=f'The backup failed unexpectedly ({exc.__class__.__name__}). Please try again.')
         finally:
             from django.db import connection
             connection.close()

@@ -1,0 +1,112 @@
+{% extends "dashboard/base.html" %}
+{% block title %}User Status{% endblock %}
+{% block page_title %}User Status{% endblock %}
+
+{% block extra_head %}
+<style>
+.us-hero{display:flex;align-items:center;gap:1.2rem;flex-wrap:wrap;margin-bottom:1.2rem}
+.us-big{display:flex;align-items:center;gap:1rem;padding:1.1rem 1.4rem;border-radius:var(--radius);background:linear-gradient(135deg,#059669,#10b981);color:#fff;box-shadow:var(--shadow-sm);min-width:240px}
+.us-big .n{font-size:2.2rem;font-weight:800;line-height:1}
+.us-big small{display:block;opacity:.9;font-size:.8rem}
+.us-pulse{width:14px;height:14px;border-radius:50%;background:#bbf7d0;box-shadow:0 0 0 0 rgba(187,247,208,.8);animation:usPulse 1.6s infinite}
+@keyframes usPulse{70%{box-shadow:0 0 0 12px rgba(187,247,208,0)}100%{box-shadow:0 0 0 0 rgba(187,247,208,0)}}
+.us-note{font-size:.8rem}
+.us-filter{display:flex;gap:.4rem;padding:1rem 1.4rem;border-bottom:1px solid var(--line)}
+.us-filter button{border:1.5px solid var(--line);background:#fff;border-radius:999px;padding:.4rem .9rem;font:inherit;font-size:.8rem;font-weight:700;color:var(--head);cursor:pointer}
+.us-filter button.on{background:var(--red);border-color:var(--red);color:#fff}
+.us-list{list-style:none;margin:0;padding:0}
+.us-row{display:flex;align-items:center;gap:.9rem;padding:.85rem 1.4rem;border-bottom:1px solid var(--line)}
+.us-row:last-child{border-bottom:none}
+.us-av{position:relative;width:42px;height:42px;flex:0 0 42px;border-radius:50%;background:var(--red-soft);color:var(--red);display:flex;align-items:center;justify-content:center;font-weight:800}
+.us-av img{width:100%;height:100%;border-radius:50%;object-fit:cover}
+.us-av .dot{position:absolute;right:-1px;bottom:-1px;width:12px;height:12px;border-radius:50%;border:2px solid #fff;background:#cbd5e1}
+.us-row.on .us-av .dot{background:#22c55e}
+.us-main{flex:1;min-width:0}
+.us-main b{color:var(--head);font-size:.92rem}
+.us-main small{display:block;font-size:.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.us-state{font-size:.78rem;font-weight:700;white-space:nowrap}
+.us-row.on .us-state{color:#16a34a}
+.us-tag{display:inline-block;margin-left:.35rem;padding:.08rem .45rem;border-radius:999px;font-size:.66rem;font-weight:800;vertical-align:middle}
+.us-tag.call{background:#dcfce7;color:#15803d}
+.us-tag.off{background:#fee2e2;color:#b91c1c}
+.us-open{font-weight:700;color:var(--red);font-size:.82rem;white-space:nowrap;text-decoration:none}
+.us-empty{padding:2.2rem 1.4rem;text-align:center;font-size:.88rem}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="us-hero">
+  <div class="us-big"><span class="us-pulse"></span><div><span class="n" id="usOnline">{{ online }}</span><small>online on /chats right now</small></div></div>
+  <div class="us-note">Out of {{ total }} account{{ total|pluralize }}. Updates live every 5 seconds — no refresh needed.<br>
+    Support is <b id="usSupport">online</b> while someone from your team has the chats open.</div>
+</div>
+
+<div class="panel">
+  <div class="us-filter">
+    <button type="button" class="on" data-f="online">Online now</button>
+    <button type="button" data-f="all">Recently active</button>
+  </div>
+  <ul class="us-list" id="usList"></ul>
+</div>
+{{ rows|json_script:"us-rows" }}
+
+<script>
+(function () {
+  var list = document.getElementById('usList'), filter = 'online';
+  var rows = JSON.parse(document.getElementById('us-rows').textContent);
+  function ago(iso) {
+    if (!iso) return 'never';
+    var s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+    if (s < 60) return 'just now';
+    if (s < 3600) return Math.floor(s / 60) + ' min ago';
+    if (s < 86400) return Math.floor(s / 3600) + ' h ago';
+    return new Date(iso).toLocaleDateString([], { day: 'numeric', month: 'short' });
+  }
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function draw() {
+    var shown = rows.filter(function (r) { return filter === 'all' || r.online; });
+    list.replaceChildren();
+    if (!shown.length) {
+      list.appendChild(el('li', 'us-empty', filter === 'online' ? 'Nobody is on the chat page right now.' : 'No one has used the chat yet.'));
+      return;
+    }
+    shown.forEach(function (r) {
+      var li = el('li', 'us-row' + (r.online ? ' on' : ''));
+      var av = el('span', 'us-av');
+      if (r.photo) { var img = el('img'); img.src = r.photo; img.alt = ''; av.appendChild(img); }
+      else av.appendChild(document.createTextNode((r.name || '?').charAt(0).toUpperCase()));
+      av.appendChild(el('span', 'dot'));
+      var main = el('div', 'us-main'), name = el('b', null, r.name);
+      main.appendChild(name);
+      if (r.in_call) main.appendChild(el('span', 'us-tag call', '📞 in a call'));
+      if (!r.active) main.appendChild(el('span', 'us-tag off', 'Deactivated'));
+      if (r.guest) main.appendChild(el('span', 'us-tag', 'Guest'));
+      main.appendChild(el('small', null, r.email ? r.email + ' · ' + r.place : r.place));
+      var state = el('span', 'us-state', r.online ? '● Online' : 'Last seen ' + ago(r.last_seen));
+      var open = el('a', 'us-open', 'Open chat'); open.href = r.chat;
+      li.append(av, main, state, open);
+      list.appendChild(li);
+    });
+  }
+  document.querySelectorAll('.us-filter button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('.us-filter button').forEach(function (x) { x.classList.toggle('on', x === b); });
+      filter = b.dataset.f; draw();
+    });
+  });
+  draw();
+  var timer = setInterval(function () {
+    if (!document.body.contains(list)) return clearInterval(timer);
+    if (document.hidden) return;
+    fetch('{% url "dashboard_chat_status" %}?format=json', { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res.ok) return;
+        rows = res.users; draw();
+        document.getElementById('usOnline').textContent = res.online;
+        document.getElementById('usSupport').textContent = res.support_online ? 'online' : 'offline';
+      }).catch(function () {});
+  }, 5000);
+})();
+</script>
+{% endblock %}

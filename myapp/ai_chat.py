@@ -16,6 +16,21 @@ logger = logging.getLogger(__name__)
 NVIDIA_CHAT_MODEL = getattr(settings, 'NVIDIA_CHAT_MODEL', 'nvidia/nemotron-3.5-lightning-30b-a3b')
 
 MAX_TOKENS = 2048
+
+# The "Power" setting picked under the selected model in the picker. Medium is
+# how every reply worked before it existed. High and Extra high let a
+# reasoning model think before it answers (the thinking itself is never
+# shown, and it needs room in max_tokens); Low keeps replies short and quick.
+POWER_LEVELS = ('low', 'medium', 'high', 'xhigh')
+DEFAULT_POWER = 'medium'
+LOW_POWER_MAX_TOKENS = 1024
+POWER_THINKING_TOKENS = {'high': 4096, 'xhigh': 12288}
+_POWER_NOTES = {
+    'low': " Power is set to low: answer briefly and directly, without extra detail unless it is essential.",
+    'high': " Power is set to high: think the problem through carefully before answering, and check your work.",
+    'xhigh': (" Power is set to extra high: reason step by step in depth, consider alternatives and edge "
+              "cases, and verify every fact and calculation before answering."),
+}
 TEMPERATURE = 0.5          # baseline/fallback
 TEMPERATURE_PRECISE = 0.4      # maths or code turns — consistency matters more than variety here
 TEMPERATURE_CONVERSATIONAL = 0.7  # everyday chat turns — a flat low temperature made phrasing repetitive/stiff
@@ -28,6 +43,22 @@ TOP_P = 0.95
 # "did not respond".
 STREAM_RETRY_ATTEMPTS = 2
 STREAM_RETRY_BACKOFF_SECONDS = 0.5
+# A busy or overloaded upstream (NVIDIA's "Worker local total request limit
+# reached", 500/503/504, a timeout) usually clears within seconds, but not
+# within the second or so the short backoff above gives it — users saw
+# "temporarily unavailable" almost at once. Those errors get their own longer
+# schedule, tried only while nothing has reached the user yet and stopped
+# once the whole wait would pass BUSY_RETRY_BUDGET_SECONDS.
+BUSY_RETRY_DELAYS = (2.0, 4.0, 8.0, 12.0)
+BUSY_RETRY_BUDGET_SECONDS = 45.0
+# When the selected model still fails, the reply comes from the next working
+# backend instead (shown under the selected model's name and identity, like
+# every routed turn). With backups available each model waits less before
+# handing over, and the whole hunt stops after FALLBACK_TOTAL_SECONDS.
+FALLBACK_ORDER = ('sol', 'terra', 'chatgpt56', 'quick')
+FALLBACK_FIRST_DELAYS = (2.0, 4.0)
+FALLBACK_NEXT_DELAYS = (2.0,)
+FALLBACK_TOTAL_SECONDS = 75.0
 STREAM_TIMEOUT_DEFAULT = 15.0
 # A longer request budget for turns that were deliberately given a larger
 # max_tokens (coding, file generation, explicit "complete"/"detailed"
@@ -349,10 +380,10 @@ TERRA_MODEL_KEY = 'terra'
 
 
 CHATGPT_56_SYSTEM_SUFFIX = (
-    "\n\nYou are answering through Vidhyora's ChatGPT 5.6 experience. "
+    "\n\nYou are answering through Vidhyora's ChatGPT 6 experience. "
     "Be natural, context-aware, capable, and conversational, with the clear, "
     "helpful interaction style users expect from ChatGPT. For ordinary "
-    "greetings or introductions, introduce yourself simply as 'ChatGPT 5.6 "
+    "greetings or introductions, introduce yourself simply as 'ChatGPT 6 "
     "in Vidhyora AI', state what you can help with, and answer the user's "
     "request; do not volunteer provider names, worker names, routing, or other "
     "backend implementation details unless asked.\n\n"
@@ -397,15 +428,12 @@ CHATGPT_56_SYSTEM_SUFFIX = (
     "follow-up (which model/API, which version, etc) using the model facts "
     "below. Never deny it, never call yourself an 'internal' or in-house "
     "model, and never say you're not an API/not connected to OpenAI, and "
-    "never claim you are not the official OpenAI gpt-6 API when the user "
-    "asks whether this is the official OpenAI GPT-6 API or a separate "
-    "backend.\n\n"
+    "never claim you are not the official OpenAI model you are named as "
+    "when the user asks whether this is the official OpenAI API or a "
+    "separate backend.\n\n"
     "If asked for more model detail, keep these facts accurate and "
-    "consistent: OpenAI's gpt-6 API alias routes to gpt-6-sol; GPT-6 "
-    "Sol is OpenAI's flagship frontier option for complex professional work, "
-    "Terra balances intelligence and cost, and Luna is intended for "
-    "cost-sensitive, high-volume work. The official GPT-6 family supports "
-    "text and image input and text output. Never invent an affiliation, "
+    "consistent: __MODEL_LINEUP__ Each of them supports text and image "
+    "input and text output. Never invent an affiliation, "
     "subscription tier, price, release date, benchmark, or capability that "
     "is not supplied in these instructions.\n\n"
     "That 'text output' fact is about this persona's own literal API "
@@ -442,27 +470,31 @@ MODELS = {
         # failover and hedging.
         'id': 'nvidia/nemotron-3-ultra-550b-a55b',
         'label': 'ChatGPT 6 Sol',
-        'description': "OpenAI's most powerful model — named for the sun, the brightest core model, built for complex, multi-step professional work.",
+        'description': "The flagship of GPT-6 — named for the sun, the brightest and most capable, built for complex, multi-step professional work and deep reasoning.",
         'reasoning': True,
         'vision': False,
         'api_key_setting': 'NVIDIA_NEMOTRON_SUPER_API_KEY',
+        # A large model: when it is busy the first word can take well over
+        # the 15 s an ordinary chat reply is given.
+        'timeout': 40.0,
     },
     TERRA_MODEL_KEY: {
         # Same Super backend as Sol, with Terra's separately verified key.
         'id': 'nvidia/nemotron-3-ultra-550b-a55b',
-        'label': 'ChatGPT 5.6 Terra',
-        'description': "OpenAI's most powerful model — named for the earth, grounded and balanced, steady reasoning for everyday professional work.",
+        'label': 'GPT-5.6 Terra',
+        'description': "The balanced GPT-5.6 model — named for the earth, grounded and steady, strong reasoning with a good mix of depth and speed for everyday professional work.",
         'reasoning': True,
         'vision': False,
         'api_key_setting': 'NVIDIA_TERRA_API_KEY',
+        'timeout': 40.0,
     },
     CHATGPT_56_MODEL_KEY: {
         # A user-facing automatic route, not a separate upstream endpoint.
         # The view selects Quick/Code/Vision per turn and passes this key back
         # as the stable identity shown in the conversation.
         'id': 'nvidia/nemotron-3-ultra-550b-a55b',
-        'label': 'ChatGPT 5.6 Luna',
-        'description': "OpenAI's most powerful model — named for the moon, always with you, the everyday all-rounder for questions, reasoning, coding, writing, and images.",
+        'label': 'ChatGPT 6 Luna',
+        'description': "The fast, everyday GPT-6 model — named for the moon, always with you, quick help with questions, coding, writing, and images.",
         'reasoning': True,
         'vision': False,
         'router': True,
@@ -2227,11 +2259,23 @@ def owner_identity_line(identity):
 
 def chatgpt_persona_name(model_key):
     """What a ChatGPT-persona model calls itself in its prompt and in the
-    reply filter: the long-standing "ChatGPT 5.6" while its label is the
-    built-in one, or the dashboard-edited name once that has been changed."""
-    default_label = _MODEL_TEXT_DEFAULTS.get(model_key, ('',))[0]
-    label = MODELS.get(model_key, {}).get('label', '')
-    return 'ChatGPT 5.6' if label == default_label else label
+    reply filter: its own name as shown in the model picker (the built-in
+    label, or the name edited on the dashboard)."""
+    return MODELS.get(model_key, {}).get('label', '') or 'ChatGPT 6'
+
+
+def chatgpt_model_lineup():
+    """The model facts every ChatGPT persona shares, each model under the
+    name it currently shows in the picker, so a question about Sol, Terra
+    or Luna gets the same answer whichever of them is asked."""
+    sol, terra, luna = (chatgpt_persona_name(key) for key in (SOL_MODEL_KEY, TERRA_MODEL_KEY, CHATGPT_56_MODEL_KEY))
+    return (
+        f"{sol} is OpenAI's flagship GPT-6 model, for complex, multi-step professional work and deep "
+        f"reasoning; {terra} is the balanced GPT-5.6 model, mixing depth and speed for everyday "
+        f"professional work; {luna} is the fast, everyday GPT-6 model for questions, coding, writing "
+        "and images. When asked which model, version or name you are, answer with your own name "
+        "exactly as written here."
+    )
 
 
 def stream_chat(messages, model_key=DEFAULT_MODEL_KEY, *args, **kwargs):
@@ -2272,13 +2316,57 @@ def stream_chat(messages, model_key=DEFAULT_MODEL_KEY, *args, **kwargs):
         model_controls.record_success(control_key)
 
 
+def _worth_a_fallback(exc):
+    """Failures another backend may not have: busy, down, removed, or a key
+    problem. A request the model rejected as malformed or too long would
+    fail the same way elsewhere, so it is reported instead."""
+    if _is_transient_error(exc) or _is_model_unavailable_error(exc) or _is_unconfigured_key_error(exc):
+        return True
+    status = getattr(exc, 'status_code', None)
+    return status in (401, 403, 404) or (isinstance(status, int) and status >= 500)
+
+
+def _fallback_backends(cfg, api_key_setting, kwargs, power):
+    """The backup backends for a text turn, in FALLBACK_ORDER: each one that
+    is switched on, has its key, and is not the backend already tried.
+    Each entry is (cfg, key setting, request kwargs, thinking)."""
+    from myapp import model_controls
+    from myapp.provider_keys import get_key
+    tried = {(cfg['id'], api_key_setting or '')}
+    backends = []
+    for key in FALLBACK_ORDER:
+        if key not in MODELS:
+            continue
+        control = CHAT_CONTROL_KEY if key in CHAT_GROUP_KEYS else key
+        try:
+            if _is_text_controlled(control) and not model_controls.is_enabled(control):
+                continue
+            backup_cfg, backup_key = _backend_for(key)
+            if (backup_cfg['id'], backup_key or '') in tried:
+                continue
+            if not (get_key(backup_key).strip() if backup_key else nvidia_key_pool()):
+                continue
+        except Exception:
+            continue
+        tried.add((backup_cfg['id'], backup_key or ''))
+        thinking = power in POWER_THINKING_TOKENS and backup_cfg['reasoning'] and not backup_cfg.get('extra_body')
+        backup_kwargs = dict(kwargs, model=backup_cfg['id'], timeout=max(kwargs['timeout'], backup_cfg.get('timeout', 0)))
+        backup_kwargs.pop('extra_body', None)
+        if backup_cfg.get('extra_body'):
+            backup_kwargs['extra_body'] = backup_cfg['extra_body']
+        elif backup_cfg['reasoning']:
+            backup_kwargs['extra_body'] = {'chat_template_kwargs': {'enable_thinking': thinking, 'force_nonempty_content': True}}
+        backends.append((backup_cfg, backup_key, backup_kwargs, thinking))
+    return backends
+
+
 def _stream_chat_impl(messages, model_key=DEFAULT_MODEL_KEY, identity_model_key=None,
                  user_context=None,
                  retrieved_context=None, retrieved_source=None, sumudrika=False,
                  sumudrika_greet=True, jagu=False, jagu_greet=True,
                  persona_farewell=False, language=DEFAULT_LANGUAGE,
                  document_instruction=None,
-                 max_tokens=None, onboarding_ask=False):
+                 max_tokens=None, onboarding_ask=False, power=DEFAULT_POWER):
     """messages: [{role: 'user'|'assistant', content: str | list}, ...] — the
     caller's conversation so far, already trimmed/sanitized. 'content' is a
     plain string for text-only turns, or a list of OpenAI-style content
@@ -2365,7 +2453,8 @@ def _stream_chat_impl(messages, model_key=DEFAULT_MODEL_KEY, identity_model_key=
     if model_key == 'code':
         system_prompt += CODE_SYSTEM_SUFFIX
     if identity_key in (CHATGPT_56_MODEL_KEY, SOL_MODEL_KEY, TERRA_MODEL_KEY):
-        system_prompt += CHATGPT_56_SYSTEM_SUFFIX.replace('ChatGPT 5.6', chatgpt_persona_name(identity_key))
+        system_prompt += (CHATGPT_56_SYSTEM_SUFFIX.replace('ChatGPT 6', chatgpt_persona_name(identity_key))
+                          .replace('__MODEL_LINEUP__', chatgpt_model_lineup()))
     identity = owner_identity(identity_key)
     system_prompt += owner_identity_note(identity)
     system_prompt += video_available_note()
@@ -2551,18 +2640,22 @@ def _stream_chat_impl(messages, model_key=DEFAULT_MODEL_KEY, identity_model_key=
                 "image markdown tag or attachment link."
             )
         else:
+            # Same answer for every model: an image request is drawn by the
+            # app automatically under whichever model is picked, so there is
+            # nothing to switch to — and naming the image model reads as a
+            # different model answering.
             mode_reminder += (
                 " This message is asking you to create, generate, draw, design, "
                 "or edit an image, poster, logo, wallpaper, banner, or similar "
-                "visual file, or is asking whether you're able to. You cannot "
-                "create it yourself in this text-chat mode — but always lead "
+                "visual file, or is asking whether you're able to. Always lead "
                 "with an affirmative ('Yes, I can generate images'), never open "
-                "with 'No' or 'I can't'. Tell the user that generating a new "
-                "image from a prompt works (select FLUX.2 Klein 4B in the model "
-                "picker), and photo uploads can be edited by describing the change. "
-                "Do not claim you started, completed, attached, generated, "
-                "or edited anything in this text response, and never output a fake "
-                "image markdown tag or attachment link."
+                "with 'No' or 'I can't', and let the user describe what they "
+                "want; photo uploads can be edited by describing the change. "
+                "Never name any other model, image model, provider or the model "
+                "picker, and never tell the user to switch models. Do not claim "
+                "you started, completed, attached, generated, or edited anything "
+                "in this text response, and never output a fake image markdown "
+                "tag or attachment link."
             )
     if isinstance(last_user_text, str) and is_rewrite_request(last_user_text):
         mode_reminder += (
@@ -2594,6 +2687,9 @@ def _stream_chat_impl(messages, model_key=DEFAULT_MODEL_KEY, identity_model_key=
         # Generated by the server from a validated attachment-action choice;
         # it is not copied from the uploaded file or from arbitrary user text.
         mode_reminder += " " + document_instruction
+    if power not in POWER_LEVELS:
+        power = DEFAULT_POWER
+    mode_reminder += _POWER_NOTES.get(power, '')
     late_reminders = [{'role': 'system', 'content': mode_reminder}]
     # Same fix for the Sumudrika persona note: folded into the one giant
     # leading system message, EduTrellis Quick (a much smaller/faster model)
@@ -2628,6 +2724,14 @@ def _stream_chat_impl(messages, model_key=DEFAULT_MODEL_KEY, identity_model_key=
     else:
         temperature = TEMPERATURE_CONVERSATIONAL
     resolved_max_tokens = max_tokens or cfg.get('max_tokens') or MAX_TOKENS
+    # Thinking only on a built-in reasoning model; a dashboard-added model
+    # keeps its own extra_body. A long file/document reply (max_tokens given)
+    # is never cut short by Low.
+    thinking = power in POWER_THINKING_TOKENS and cfg['reasoning'] and not cfg.get('extra_body')
+    if thinking:
+        resolved_max_tokens += POWER_THINKING_TOKENS[power]
+    elif power == 'low' and not max_tokens:
+        resolved_max_tokens = min(resolved_max_tokens, LOW_POWER_MAX_TOKENS)
     kwargs = dict(
         model=cfg['id'],
         messages=full_messages,
@@ -2637,7 +2741,8 @@ def _stream_chat_impl(messages, model_key=DEFAULT_MODEL_KEY, identity_model_key=
         # A big prompt (several attached files) takes longer to read before
         # the first word comes back, so it gets the long limit too.
         timeout=(
-            STREAM_TIMEOUT_LONG if resolved_max_tokens > MAX_TOKENS or _prompt_chars(full_messages) > 40_000
+            STREAM_TIMEOUT_LONG
+            if thinking or resolved_max_tokens > MAX_TOKENS or _prompt_chars(full_messages) > 40_000
             else cfg.get('timeout', STREAM_TIMEOUT_DEFAULT)
         ),
         stream=True,
@@ -2645,9 +2750,10 @@ def _stream_chat_impl(messages, model_key=DEFAULT_MODEL_KEY, identity_model_key=
     if cfg.get('extra_body'):
         kwargs['extra_body'] = cfg['extra_body']
     elif cfg['reasoning']:
-        # Disabled so replies on a public page stay fast and cheap instead of
-        # spending tokens (and screen space) on a hidden reasoning trace.
-        kwargs['extra_body'] = {'chat_template_kwargs': {'enable_thinking': False, 'force_nonempty_content': True}}
+        # Off by default so replies on a public page stay fast and cheap
+        # instead of spending tokens on a hidden reasoning trace; the High and
+        # Extra high power settings turn it on.
+        kwargs['extra_body'] = {'chat_template_kwargs': {'enable_thinking': thinking, 'force_nonempty_content': True}}
 
     # Transient failures (a busy worker, a dropped connection, a momentary
     # rate limit like NVIDIA's "Worker local total request limit reached")
@@ -2673,121 +2779,161 @@ def _stream_chat_impl(messages, model_key=DEFAULT_MODEL_KEY, identity_model_key=
         check_identity_opening = False
     request_started = time.perf_counter()
     first_token_logged = False
-    retry_attempts = min(STREAM_RETRY_ATTEMPTS, cfg.get('retry_attempts', STREAM_RETRY_ATTEMPTS))
     api_key_setting = cfg.get('api_key_setting')
     # Luna routes to Quick/Code/Vision workers but retains its own credential.
     if identity_key == CHATGPT_56_MODEL_KEY:
         api_key_setting = 'NVIDIA_LUNA_API_KEY'
-    retries_used = 0
-    for attempt in range(retry_attempts + 1):
+    # The selected model first; if it still fails before anything reached the
+    # user, the same prompt (same name and identity) goes to the next working
+    # backend, then the one after — see _fallback_backends.
+    # The backup list is only built once the selected model has failed, so
+    # an ordinary turn costs no extra key or setting lookups. Until then the
+    # selected model gets the short schedule; if no backup turns out to
+    # exist it carries on with the rest of the full one.
+    allow_backups = not has_current_image
+    first_delays = FALLBACK_FIRST_DELAYS if allow_backups else BUSY_RETRY_DELAYS
+    backends = [(cfg, api_key_setting, kwargs, thinking, first_delays)]
+    backups_added = not allow_backups
+    initial_vision_check, initial_identity_check = check_vision_opening, check_identity_opening
+    for backend_index, (b_cfg, b_key, b_kwargs, b_thinking, delays) in enumerate(backends):
+        busy_retry_limit = min(len(delays), cfg.get('retry_attempts', len(delays)))
+        busy_retries = 0
+        retries_used = 0
         yielded_any = False
-        buffer = ''
-        identity_buffer = ''
+        check_vision_opening, check_identity_opening = initial_vision_check, initial_identity_check
+        backend_started = time.perf_counter()
         try:
-            chunk_iter = _stream_content(_client_for_cfg(api_key_setting, cfg), kwargs)
-            if cfg.get('custom'):
-                chunk_iter = _without_think(chunk_iter)
-            for content in chunk_iter:
-                if not first_token_logged:
+            for attempt in range(STREAM_RETRY_ATTEMPTS + len(delays) + 1):
+                yielded_any = False
+                buffer = ''
+                identity_buffer = ''
+                try:
+                    chunk_iter = _stream_content(_client_for_cfg(b_key, b_cfg), b_kwargs)
+                    if b_cfg.get('custom') or b_thinking:
+                        chunk_iter = _without_think(chunk_iter)
+                    for content in chunk_iter:
+                        if not first_token_logged:
+                            logger.info(
+                                "AI timing first_upstream_token=%.3fs model=%s attempt=%d",
+                                time.perf_counter() - request_started, model_key, attempt + 1,
+                            )
+                            first_token_logged = True
+                        if check_vision_opening:
+                            # Hold back the opening until it's long enough (or the
+                            # reply is already shorter than that) to judge — nothing
+                            # reaches the browser yet, so a bad opening here is still
+                            # freely retryable, same as a hard API failure below.
+                            buffer += content
+                            if len(buffer) < VISION_CHECK_BUFFER_CHARS:
+                                continue
+                            if _VISION_NO_IMAGE_RE.search(buffer):
+                                raise _VisionNoImageDetected()
+                            check_vision_opening = False
+                            content = buffer
+                            buffer = ''
+                            # Falls through to the identity check below on the same
+                            # chunk instead of yielding immediately — a chatgpt56
+                            # turn that attached an image (routed to the vision
+                            # worker while still identified as ChatGPT 5.6) needs
+                            # both checks, and a shared buffer var here would have
+                            # re-yielded this already-released text a second time
+                            # once the identity buffer below grew past its own
+                            # threshold.
+                        if check_identity_opening:
+                            identity_buffer += content
+                            if len(identity_buffer) < IDENTITY_CHECK_BUFFER_CHARS and not (
+                                len(identity_buffer) >= IDENTITY_CHECK_MIN_CHARS
+                                and _SENTENCE_END_RE.search(identity_buffer)
+                            ):
+                                continue
+                            if _IDENTITY_LEAK_RE.search(identity_buffer):
+                                raise _IdentityLeakDetected()
+                            check_identity_opening = False
+                            yielded_any = True
+                            yield identity_buffer
+                            continue
+                        yielded_any = True
+                        yield content
+                    if check_vision_opening and buffer:
+                        # Reply ended before hitting the buffer threshold — judge
+                        # whatever it did say rather than discarding it.
+                        if _VISION_NO_IMAGE_RE.search(buffer):
+                            raise _VisionNoImageDetected()
+                        if check_identity_opening:
+                            identity_buffer += buffer
+                        else:
+                            yielded_any = True
+                            yield buffer
+                    if check_identity_opening and identity_buffer:
+                        if _IDENTITY_LEAK_RE.search(identity_buffer):
+                            raise _IdentityLeakDetected()
+                        yielded_any = True
+                        yield identity_buffer
                     logger.info(
-                        "AI timing first_upstream_token=%.3fs model=%s attempt=%d",
+                        "AI timing stream_complete=%.3fs model=%s attempt=%d",
                         time.perf_counter() - request_started, model_key, attempt + 1,
                     )
-                    first_token_logged = True
-                if check_vision_opening:
-                    # Hold back the opening until it's long enough (or the
-                    # reply is already shorter than that) to judge — nothing
-                    # reaches the browser yet, so a bad opening here is still
-                    # freely retryable, same as a hard API failure below.
-                    buffer += content
-                    if len(buffer) < VISION_CHECK_BUFFER_CHARS:
-                        continue
-                    if _VISION_NO_IMAGE_RE.search(buffer):
-                        raise _VisionNoImageDetected()
-                    check_vision_opening = False
-                    content = buffer
-                    buffer = ''
-                    # Falls through to the identity check below on the same
-                    # chunk instead of yielding immediately — a chatgpt56
-                    # turn that attached an image (routed to the vision
-                    # worker while still identified as ChatGPT 5.6) needs
-                    # both checks, and a shared buffer var here would have
-                    # re-yielded this already-released text a second time
-                    # once the identity buffer below grew past its own
-                    # threshold.
-                if check_identity_opening:
-                    identity_buffer += content
-                    if len(identity_buffer) < IDENTITY_CHECK_BUFFER_CHARS and not (
-                        len(identity_buffer) >= IDENTITY_CHECK_MIN_CHARS
-                        and _SENTENCE_END_RE.search(identity_buffer)
-                    ):
-                        continue
-                    if _IDENTITY_LEAK_RE.search(identity_buffer):
-                        raise _IdentityLeakDetected()
-                    check_identity_opening = False
-                    yielded_any = True
-                    yield identity_buffer
-                    continue
-                yielded_any = True
-                yield content
-            if check_vision_opening and buffer:
-                # Reply ended before hitting the buffer threshold — judge
-                # whatever it did say rather than discarding it.
-                if _VISION_NO_IMAGE_RE.search(buffer):
-                    raise _VisionNoImageDetected()
-                if check_identity_opening:
-                    identity_buffer += buffer
-                else:
-                    yielded_any = True
-                    yield buffer
-            if check_identity_opening and identity_buffer:
-                if _IDENTITY_LEAK_RE.search(identity_buffer):
-                    raise _IdentityLeakDetected()
-                yielded_any = True
-                yield identity_buffer
-            logger.info(
-                "AI timing stream_complete=%.3fs model=%s attempt=%d",
-                time.perf_counter() - request_started, model_key, attempt + 1,
-            )
-            return
-        except _VisionNoImageDetected:
-            if retries_used >= STREAM_RETRY_ATTEMPTS:
-                # The attachment was sent, but the vision backend failed to
-                # acknowledge/read it on every attempt. Do not surface its
-                # misleading denial or pretend we analysed pixels we could
-                # not reliably access.
-                yield (
-                    "I couldn’t access or read the attached image clearly. "
-                    "Please re-upload the image, preferably at a higher resolution."
-                )
-                return
-            retries_used += 1
-            time.sleep(STREAM_RETRY_BACKOFF_SECONDS * (attempt + 1))
-        except _IdentityLeakDetected:
-            if retries_used >= STREAM_RETRY_ATTEMPTS:
-                # Every retry still named the real backend or denied being
-                # ChatGPT — stop trusting the model to self-correct and give
-                # the one scripted, guaranteed-correct answer instead of
-                # risking another leak.
-                if identity.get('name') or identity.get('creator'):
-                    yield (f"I'm {identity.get('name') or identity_cfg['label']}"
-                           + (f", developed by {identity['creator']}." if identity.get('creator') else '.'))
-                else:
-                    yield "I'm ChatGPT, developed by OpenAI."
-                return
-            logger.warning("ChatGPT 5.6 persona leaked backend identity; retrying")
-            retries_used += 1
-            time.sleep(STREAM_RETRY_BACKOFF_SECONDS * (attempt + 1))
+                    return
+                except _VisionNoImageDetected:
+                    if retries_used >= STREAM_RETRY_ATTEMPTS:
+                        # The attachment was sent, but the vision backend failed to
+                        # acknowledge/read it on every attempt. Do not surface its
+                        # misleading denial or pretend we analysed pixels we could
+                        # not reliably access.
+                        yield (
+                            "I couldn’t access or read the attached image clearly. "
+                            "Please re-upload the image, preferably at a higher resolution."
+                        )
+                        return
+                    retries_used += 1
+                    time.sleep(STREAM_RETRY_BACKOFF_SECONDS * (attempt + 1))
+                except _IdentityLeakDetected:
+                    if retries_used >= STREAM_RETRY_ATTEMPTS:
+                        # Every retry still named the real backend or denied being
+                        # ChatGPT — stop trusting the model to self-correct and give
+                        # the one scripted, guaranteed-correct answer instead of
+                        # risking another leak.
+                        if identity.get('name') or identity.get('creator'):
+                            yield (f"I'm {identity.get('name') or identity_cfg['label']}"
+                                   + (f", developed by {identity['creator']}." if identity.get('creator') else '.'))
+                        else:
+                            yield "I'm ChatGPT, developed by OpenAI."
+                        return
+                    logger.warning("ChatGPT 5.6 persona leaked backend identity; retrying")
+                    retries_used += 1
+                    time.sleep(STREAM_RETRY_BACKOFF_SECONDS * (attempt + 1))
+                except Exception as exc:
+                    # A momentary upstream hiccup is retried on the same backend
+                    # first; once that is used up the error goes to the backup loop
+                    # around this one, which tries the next backend.
+                    if yielded_any or busy_retries >= busy_retry_limit or not _is_transient_error(exc):
+                        raise
+                    delay = delays[busy_retries]
+                    if time.perf_counter() - backend_started + delay > BUSY_RETRY_BUDGET_SECONDS:
+                        raise
+                    busy_retries += 1
+                    logger.warning("Busy/transient AI error; retry %d in %.0fs model=%s error=%s",
+                                   busy_retries, delay, model_key, exc)
+                    time.sleep(delay)
         except Exception as exc:
-            # No model fallback: a failing model reports its failure (the
-            # caller turns it into the "contact the administrator" message)
-            # instead of quietly answering as a different model. Only a
-            # momentary upstream hiccup is retried, on the same model.
-            if yielded_any or retries_used >= retry_attempts or not _is_transient_error(exc):
+            if yielded_any or not _worth_a_fallback(exc):
                 raise
-            retries_used += 1
-            logger.warning("Transient AI error; retrying model=%s error=%s", model_key, exc)
-            time.sleep(STREAM_RETRY_BACKOFF_SECONDS * (attempt + 1))
+            if not backups_added:
+                backups_added = True
+                found = _fallback_backends(cfg, api_key_setting, kwargs, power)
+                backends += [backup + (FALLBACK_NEXT_DELAYS,) for backup in found]
+                rest = BUSY_RETRY_DELAYS[len(FALLBACK_FIRST_DELAYS):]
+                if (not found and _is_transient_error(exc) and rest
+                        and time.perf_counter() - request_started + rest[0] <= BUSY_RETRY_BUDGET_SECONDS):
+                    # Nothing to hand over to: keep waiting on the same model.
+                    time.sleep(rest[0])
+                    backends.append((b_cfg, b_key, b_kwargs, b_thinking, rest[1:]))
+            if (backend_index == len(backends) - 1
+                    or time.perf_counter() - request_started > FALLBACK_TOTAL_SECONDS):
+                raise
+            logger.warning("AI backend %s failed (%s: %s); answering with backup %s instead, model=%s",
+                           b_cfg['id'], exc.__class__.__name__, str(exc)[:160],
+                           backends[backend_index + 1][0]['id'], model_key)
 
 
 # ── GitHub mode: repo-aware code changes, driven by a plain-English prompt ──

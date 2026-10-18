@@ -1,0 +1,103 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Contact Form Data{% endblock %}
+{% block page_title %}Contact Form Data{% endblock %}
+
+{% block extra_head %}
+<style>
+.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.78rem}
+.flash{background:#e8f8ee;color:#177245;border-radius:12px;padding:.85rem 1rem;font-size:.88rem;font-weight:600;margin-bottom:1.2rem}
+.flash.error{background:#fee2e2;color:#b91c1c}
+.cf-filters{display:flex;align-items:center;gap:.55rem;flex-wrap:wrap;padding:1rem 1.4rem;border-bottom:1px solid var(--line)}
+.cf-filters select{height:38px;border:1.5px solid var(--line);border-radius:10px;padding:0 .7rem;font-family:inherit;font-size:.82rem;background:var(--bg-alt);color:var(--head)}
+.cf-filters select:focus{outline:none;border-color:var(--red)}
+.cf-filters .panel-search input{width:260px;max-width:100%}
+.cf-clear{font-size:.8rem;font-weight:700;color:var(--red)}
+.cf-who{font-weight:700;color:var(--head)}
+.cf-who a{color:var(--red);font-weight:600}
+.cf-msg{max-width:420px;font-size:.82rem;color:var(--text);white-space:pre-wrap;word-break:break-word}
+.badge.cf-contact{background:#eef2ff;color:#3b4fd1}
+.badge.cf-newsletter{background:#e8fbf0;color:#1da851}
+.cf-del{border:none;background:none;color:#b91c1c;cursor:pointer;font-size:.9rem;padding:.3rem}
+.cf-empty{padding:2.2rem 1.4rem;text-align:center;color:var(--text);font-size:.88rem}
+.pager{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem 1.4rem;font-size:.82rem;color:var(--text);border-top:1px solid var(--line);flex-wrap:wrap}
+.pager a{font-weight:700;color:var(--red)}
+.pager span.off{opacity:.4}
+</style>
+{% endblock %}
+
+{% block content %}
+{% for message in messages %}
+<div class="flash {{ message.tags }}"><i class="fas {% if message.tags == 'error' %}fa-circle-exclamation{% else %}fa-circle-check{% endif %}"></i> {{ message }}</div>
+{% endfor %}
+
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="stat-ico"><i class="fas fa-envelope-open-text"></i></div>
+    <div><div class="stat-num">{{ stats.contact }}</div><div class="stat-lbl">Contact form messages</div></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-ico"><i class="fas fa-newspaper"></i></div>
+    <div><div class="stat-num">{{ stats.newsletter }}</div><div class="stat-lbl">Newsletter sign-ups</div></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-ico"><i class="fas fa-calendar-day"></i></div>
+    <div><div class="stat-num">{{ stats.today }}</div><div class="stat-lbl">Received today</div></div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head">
+    <h3>{{ match_count }} entr{{ match_count|pluralize:"y,ies" }}</h3>
+  </div>
+  <form class="cf-filters" method="get">
+    <span class="panel-search">
+      <i class="fas fa-magnifying-glass"></i>
+      <input type="search" name="q" value="{{ q }}" placeholder="Search name, email, phone or message…">
+    </span>
+    <select name="type" onchange="this.form.submit()" aria-label="Type">
+      <option value="all" {% if source == 'all' %}selected{% endif %}>Everything</option>
+      <option value="contact" {% if source == 'contact' %}selected{% endif %}>Contact form</option>
+      <option value="newsletter" {% if source == 'newsletter' %}selected{% endif %}>Newsletter</option>
+    </select>
+    {% if q or source != 'all' %}<a class="cf-clear" href="{% url 'dashboard_contact_forms' %}">Clear filters</a>{% endif %}
+  </form>
+  {% if page.object_list %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Received</th><th>From</th><th>Type</th><th>Service</th><th>Message</th><th></th></tr></thead>
+    <tbody>
+      {% for e in page %}
+      <tr>
+        <td>{{ e.created_at|date:"d M Y" }}<br><span class="mono">{{ e.created_at|date:"h:i A" }}</span></td>
+        <td class="cf-who">
+          {{ e.name|default:"—" }}<br>
+          <a href="mailto:{{ e.email }}">{{ e.email }}</a>
+          {% if e.phone %}<br><a href="tel:{{ e.phone }}">{{ e.phone }}</a>{% endif %}
+        </td>
+        <td><span class="badge cf-{{ e.source }}">{{ e.get_source_display }}</span></td>
+        <td>{{ e.service_label|default:"—" }}</td>
+        <td><div class="cf-msg">{{ e.message|default:"—" }}</div></td>
+        <td>
+          <form method="post" action="{% url 'dashboard_contact_form_delete' e.pk %}" onsubmit="return confirm('Delete this entry?');">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <button type="submit" class="cf-del" title="Delete" aria-label="Delete entry"><i class="fas fa-trash"></i></button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if page.paginator.num_pages > 1 %}
+  <div class="pager">
+    {% if page.has_previous %}<a href="?q={{ q|urlencode }}&type={{ source }}&page={{ page.previous_page_number }}">← Newer</a>{% else %}<span class="off">← Newer</span>{% endif %}
+    <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+    {% if page.has_next %}<a href="?q={{ q|urlencode }}&type={{ source }}&page={{ page.next_page_number }}">Older →</a>{% else %}<span class="off">Older →</span>{% endif %}
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="cf-empty">{% if q or source != 'all' %}Nothing matches these filters.{% else %}No messages yet. Entries from the contact form and newsletter box on <a href="{% url 'home_page' %}" target="_blank" rel="noopener">/home</a> appear here.{% endif %}</div>
+  {% endif %}
+</div>
+{% endblock %}

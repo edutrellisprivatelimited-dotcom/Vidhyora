@@ -67,6 +67,7 @@
 </script>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800;900&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="{% static 'chat/support_chat.css' %}">
 {% if SITE_FAVICON_URL %}<link rel="icon" href="{{ SITE_FAVICON_URL }}">{% else %}<link rel="icon" href="{% static 'favicon.ico' %}" type="image/x-icon">{% endif %}
 <style>
 :root{
@@ -278,6 +279,21 @@ tbody tr:hover{background:var(--bg-alt)}
 .dash-progress.on{opacity:1}
 .dash-body{transition:opacity .15s ease}
 .dash-body.loading{opacity:.55}
+.nav-badge{margin-left:auto;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:#ef4444;color:#fff;font-size:.68rem;font-weight:800;display:inline-flex;align-items:center;justify-content:center;line-height:1}
+.nav-group summary{display:flex;align-items:center;gap:.7rem;padding:.75rem .9rem;border-radius:12px;font-size:.87rem;font-weight:600;color:rgba(255,255,255,.7);cursor:pointer;list-style:none;transition:all .2s}
+.nav-group summary::-webkit-details-marker{display:none}
+.nav-group summary i:first-child{width:18px;text-align:center}
+.nav-group summary:hover{background:rgba(255,255,255,.06);color:#fff}
+.nav-group[open] summary{color:#fff}
+.nav-caret{margin-left:auto;font-size:.65rem;transition:transform .2s}
+.nav-badge + .nav-caret{margin-left:.4rem}
+.nav-group[open] .nav-caret{transform:rotate(180deg)}
+.dash-nav a.nav-sub{padding:.6rem .9rem .6rem 2.2rem;font-size:.82rem}
+.nav-online{display:inline-flex;align-items:center;gap:.3rem;background:rgba(34,197,94,.18);color:#86efac}
+.dash-nav a.nav-sub{white-space:nowrap}
+.dash-nav .nav-online i{width:7px;min-width:7px;flex:0 0 7px;height:7px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.25);animation:navPulse 1.6s infinite}
+@keyframes navPulse{50%{box-shadow:0 0 0 5px rgba(34,197,94,0)}}
+.nav-count{margin-left:auto;font-size:.7rem;font-weight:800;padding:.1rem .5rem;border-radius:999px;background:rgba(255,255,255,.14)}
 </style>
 <meta name="dash-page-head">
 {% block extra_head %}{% endblock %}
@@ -308,6 +324,15 @@ tbody tr:hover{background:var(--bg-alt)}
       <a href="{% url 'dashboard_payments' %}" class="{% if active == 'payments' %}active{% endif %}"><i class="fas fa-indian-rupee-sign"></i> Payments</a>
       <a href="{% url 'dashboard_pwa_settings' %}" class="{% if active == 'pwa_settings' %}active{% endif %}"><i class="fas fa-mobile-screen-button"></i> PWA / Install App</a>
       <a href="{% url 'dashboard_customize' %}" class="{% if active == 'customize' %}active{% endif %}"><i class="fas fa-palette"></i> Customize</a>
+      <details class="nav-group"{% if active == 'chats' or active == 'chat_signups' or active == 'chat_profile' or active == 'chat_status' or active == 'chat_ips' %} open{% endif %}>
+        <summary><i class="fas fa-comments"></i> Chats{% if pending_chats %} <span class="nav-badge" title="{{ pending_chats }} chat{{ pending_chats|pluralize }} waiting for a reply">{{ pending_chats }}</span>{% endif %}<i class="fas fa-chevron-down nav-caret"></i></summary>
+        <a href="{% url 'dashboard_chats' %}" class="nav-sub{% if active == 'chats' %} active{% endif %}"><i class="fas fa-message"></i> Conversations</a>
+        <a href="{% url 'dashboard_chat_signups' %}" class="nav-sub{% if active == 'chat_signups' %} active{% endif %}"><i class="fas fa-user-plus"></i> Total signups <span class="nav-count">{{ chat_signup_total|default:0 }}</span></a>
+        <a href="{% url 'dashboard_chat_status' %}" class="nav-sub{% if active == 'chat_status' %} active{% endif %}"><i class="fas fa-signal"></i> User status <span class="nav-count nav-online" id="navOnline"><i></i>{{ chat_online_total|default:0 }}</span></a>
+        <a href="{% url 'dashboard_chat_ips' %}" class="nav-sub{% if active == 'chat_ips' %} active{% endif %}"><i class="fas fa-network-wired"></i> IP addresses <span class="nav-count">{{ chat_ip_total|default:0 }}</span></a>
+        <a href="{% url 'dashboard_chat_profile' %}" class="nav-sub{% if active == 'chat_profile' %} active{% endif %}"><i class="fas fa-user-gear"></i> Update profile</a>
+      </details>
+      <a href="{% url 'dashboard_contact_forms' %}" class="{% if active == 'contact_forms' %}active{% endif %}"><i class="fas fa-envelope-open-text"></i> Contact Form Data</a>
       <a href="{% url 'dashboard_backup' %}" class="{% if active == 'backup' %}active{% endif %}"><i class="fas fa-database"></i> Backup &amp; Restore</a>
     </nav>
     <div class="dash-sidebar-foot">
@@ -489,6 +514,20 @@ dashEnhancePasswords(document);
   orig.winAdd('popstate', function(e){
     if (e.state && e.state.dashNav) go(location.href, false);
   });
+})();
+</script>
+<script>
+// Live "User status" count in the sidebar.
+(function () {
+  if (window.__navOnlineTimer) return;
+  window.__navOnlineTimer = setInterval(function () {
+    var badge = document.getElementById('navOnline');
+    if (!badge || document.hidden) return;
+    fetch('{% url "dashboard_chat_status" %}?format=json', { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (res) { if (res.ok) badge.lastChild.textContent = res.online; })
+      .catch(function () {});
+  }, 10000);
 })();
 </script>
 </body>

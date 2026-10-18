@@ -1,9 +1,36 @@
 from django.urls import path
 from django.views.generic import RedirectView
-from myapp import ai_calls, api_checker, calls_dashboard, coding_api, coding_dashboard, views
+from myapp import ai_calls, api_checker, calls_dashboard, coding_api, coding_dashboard, support_chat, views
 
 urlpatterns = [
     path('', views.ai_page, name='home'),
+    path('home/', views.home_page, name='home_page'),
+    path('chats/', support_chat.chats_page, name='chats_page'),
+    path('chats/reset/<str:token>/', support_chat.reset_page, name='chats_reset'),
+    path('chats/api/signup/', support_chat.api_signup, name='chats_signup'),
+    path('chats/api/login/', support_chat.api_login, name='chats_login'),
+    path('chats/api/logout/', support_chat.api_logout, name='chats_logout'),
+    path('chats/api/forgot/', support_chat.api_forgot, name='chats_forgot'),
+    path('chats/api/messages/', support_chat.api_messages, name='chats_messages'),
+    path('chats/api/upload/', support_chat.api_upload, name='chats_upload'),
+    path('chats/api/location/', support_chat.api_location, name='chats_location'),
+    path('chats/api/call/', support_chat.api_call, name='chats_call'),
+    path('chats/file/<int:pk>/', support_chat.attachment, name='chats_attachment'),
+    path('chats/api/profile/', support_chat.api_profile, name='chats_profile'),
+    path('chats/api/guest/', support_chat.api_guest, name='chats_guest'),
+    path('chats/user-photo/<int:pk>/', support_chat.user_photo, name='chats_user_photo'),
+    path('chats/support-photo/', support_chat.support_photo, name='chats_support_photo'),
+    path('store/dashboard/chats/profile/', views.dashboard_staff_required(support_chat.dashboard_chat_profile), name='dashboard_chat_profile'),
+    path('store/dashboard/chats/signups/', views.dashboard_staff_required(support_chat.dashboard_chat_signups), name='dashboard_chat_signups'),
+    path('store/dashboard/chats/status/', views.dashboard_staff_required(support_chat.dashboard_chat_status), name='dashboard_chat_status'),
+    path('store/dashboard/chats/ips/', views.dashboard_staff_required(support_chat.dashboard_chat_ips), name='dashboard_chat_ips'),
+    path('store/dashboard/chats/users/<int:pk>/action/', views.dashboard_staff_required(support_chat.dashboard_chat_user_action), name='dashboard_chat_user_action'),
+    path('store/dashboard/chats/<int:pk>/call/', views.dashboard_staff_required(support_chat.dashboard_chat_call), name='dashboard_chat_call'),
+    path('store/dashboard/chats/', views.dashboard_staff_required(support_chat.dashboard_chats), name='dashboard_chats'),
+    path('store/dashboard/chats/<int:pk>/', views.dashboard_staff_required(support_chat.dashboard_chat_thread), name='dashboard_chat_thread'),
+    path('store/dashboard/chats/<int:pk>/poll/', views.dashboard_staff_required(support_chat.dashboard_chat_poll), name='dashboard_chat_poll'),
+    path('home/contact/', views.contact_submit, name='contact_submit'),
+    path('home/newsletter/', views.newsletter_submit, name='newsletter_submit'),
     # Keep a service worker at the conventional site-root URL. This also
     # satisfies browsers that retain an older root registration.
     path('sw.js', views.pwa_service_worker, name='service_worker'),
@@ -66,8 +93,11 @@ urlpatterns = [
     path('store/dashboard/customize/', views.dashboard_customize, name='dashboard_customize'),
     path('store/dashboard/payments/', views.dashboard_payments, name='dashboard_payments'),
     path('store/dashboard/backup/', views.dashboard_backup, name='dashboard_backup'),
+    path('store/dashboard/contact-forms/', views.dashboard_contact_forms, name='dashboard_contact_forms'),
+    path('store/dashboard/contact-forms/<int:pk>/delete/', views.dashboard_contact_form_delete, name='dashboard_contact_form_delete'),
     path('store/dashboard/backup/settings/', views.dashboard_backup_settings, name='dashboard_backup_settings'),
     path('store/dashboard/backup/run/', views.dashboard_backup_run, name='dashboard_backup_run'),
+    path('store/dashboard/backup/cancel/', views.dashboard_backup_cancel, name='dashboard_backup_cancel'),
     path('store/dashboard/backup/restore/', views.dashboard_backup_restore, name='dashboard_backup_restore'),
     path('store/dashboard/backup/delete-all/', views.dashboard_backup_delete_all, name='dashboard_backup_delete_all'),
     path('store/dashboard/logout/', views.dashboard_logout, name='dashboard_logout'),
