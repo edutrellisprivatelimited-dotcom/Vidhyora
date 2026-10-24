@@ -1,5 +1,8 @@
+import logging
+
+from django.conf import settings
 from django.core.exceptions import MiddlewareNotUsed
-from django.http import HttpResponsePermanentRedirect
+from django.http import Http404, HttpResponse, HttpResponsePermanentRedirect, JsonResponse
 from django.shortcuts import render
 
 from django.contrib.auth import logout
@@ -8,6 +11,58 @@ from django.utils import timezone
 
 from .models import ActiveUserSession
 from .single_device import register_active_session
+
+logger = logging.getLogger(__name__)
+
+
+class FriendlyErrorMiddleware:
+    """DEBUG is on in production, and with DEBUG on Django answers a missing
+    page or a crash with its developer page: the error, the code location,
+    every URL of the site, and on a crash parts of the settings. Visitors get
+    the site's own error page instead (a JSON error for the chat's API calls);
+    the full error still goes to the server log. With DEBUG off Django already
+    shows 404.html / 500.html, so this steps aside.
+
+    process_exception covers errors raised by a view. __call__ is the safety
+    net for the rarer error raised inside another middleware, recognised by
+    the robots meta tag Django's developer pages carry, so this must stay the
+    first entry in MIDDLEWARE."""
+
+    DEBUG_PAGE_MARKER = b'<meta name="robots" content="NONE,NOARCHIVE">'
+
+    def __init__(self, get_response):
+        if not settings.DEBUG:
+            raise MiddlewareNotUsed
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        if (response.status_code >= 400 and not response.streaming
+                and response.get('Content-Type', '').startswith('text/html')
+                and self.DEBUG_PAGE_MARKER in response.content):
+            return self._error_response(request, response.status_code)
+        return response
+
+    def process_exception(self, request, exception):
+        if isinstance(exception, Http404):
+            return self._error_response(request, 404)
+        logger.error('Error on %s %s', request.method, request.path, exc_info=exception)
+        return self._error_response(request, 500)
+
+    @staticmethod
+    def _error_response(request, status):
+        wants_page = 'text/html' in request.headers.get('Accept', '')
+        if '/api/' in request.path and not wants_page:
+            detail = 'Not found.' if status == 404 else 'Something went wrong. Please try again.'
+            return JsonResponse({'status': 'error', 'detail': detail}, status=status)
+        try:
+            return render(request, '404.html' if status == 404 else '500.html', status=status)
+        except Exception:
+            # The page itself could not be built (say the database is down):
+            # a bare message still beats Django's developer page.
+            logger.exception('Could not render the error page')
+            return HttpResponse('Something went wrong. Please try again in a moment.',
+                                content_type='text/plain; charset=utf-8', status=status)
 
 
 class AutoBackupMiddleware:

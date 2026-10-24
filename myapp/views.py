@@ -3306,7 +3306,15 @@ def ai_generated_file_download(request, token):
             files = files.none()
         else:
             files = files.filter(user__isnull=True, session_key=session_key)
-    generated_file = get_object_or_404(files)
+    generated_file = files.first()
+    if generated_file is None:
+        # Usually the link was shared (say on WhatsApp) and opened somewhere
+        # not logged in to the account that made the file.
+        return render(request, 'error.html', {
+            'error_title': 'File not available here',
+            'error_message': 'This file can only be downloaded from the Vidhyora AI account that created it. '
+                             'Open Vidhyora AI where you are logged in to that account and download it from your chat.',
+        }, status=404)
 
     name = generated_file.file_name.lower()
     if doc_image.is_image_file(generated_file.content):

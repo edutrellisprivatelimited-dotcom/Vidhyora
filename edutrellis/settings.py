@@ -41,6 +41,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'myapp.middleware.FriendlyErrorMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'myapp.middleware.AutoBackupMiddleware',
     'myapp.middleware.CanonicalHostMiddleware',

@@ -1,0 +1,109 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>{{ error_title|default:"Page Not Found" }} — Vidhyora AI</title>
+<meta name="robots" content="noindex, follow">
+<script>
+// Use the same device-level appearance choices as the AI frontend before
+// first paint, so even an error page never flashes the old red theme.
+(function(){
+  try {
+    var saved = localStorage.getItem('ai_theme');
+    if (saved === 'light' || saved === 'dark') document.documentElement.setAttribute('data-theme', saved);
+    var colorDefaultVersion = 'emerald-v1';
+    if (localStorage.getItem('ai_color_default_version') !== colorDefaultVersion) {
+      localStorage.setItem('ai_color_theme', 'emerald');
+      localStorage.setItem('ai_color_default_version', colorDefaultVersion);
+    }
+    var accent = localStorage.getItem('ai_color_theme');
+    if (['orange','blue','violet','emerald','crimson'].indexOf(accent) !== -1) {
+      document.documentElement.setAttribute('data-accent', accent);
+    }
+    var font = localStorage.getItem('ai_font_theme');
+    if (['default','inter','poppins','manrope','jakarta','sora','urbanist','lexend','spacegrotesk','nunito','worksans','figtree','librefranklin','epilogue','dmsans'].indexOf(font) !== -1) {
+      document.documentElement.setAttribute('data-font', font);
+    }
+  } catch (e) {}
+})();
+</script>
+{% if SITE_FAVICON_URL %}<link rel="icon" href="{{ SITE_FAVICON_URL }}">{% else %}<link rel="icon" href="{% static 'favicon.ico' %}" type="image/x-icon">{% endif %}
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700;800&family=Poppins:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@400;500;600;700;800;900&family=Urbanist:wght@400;500;600;700;800;900&family=Lexend:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=Nunito:wght@400;500;600;700;800;900&family=Work+Sans:wght@400;500;600;700;800&family=Figtree:wght@400;500;600;700;800;900&family=Libre+Franklin:wght@400;500;600;700;800;900&family=Epilogue:wght@400;500;600;700;800;900&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+:root{color-scheme:light;--red:#059669;--red-dark:#047857;--accent-rgb:5,150,105;--dark:#071713;--text:#555f6d;--head:#111418;--line:#e7eaf0;--bg-alt:#f8f9fc;--bg:#fff;--surface:#fff;--tint:rgba(var(--accent-rgb),.09);--font-head:'Outfit',sans-serif;--font-body:'Inter',sans-serif}
+:root[data-accent="orange"]{--red:#ff7a00;--red-dark:#d95f00;--accent-rgb:255,122,0;--dark:#101114}
+:root[data-accent="blue"]{--red:#2563eb;--red-dark:#1747b8;--accent-rgb:37,99,235;--dark:#101827}
+:root[data-accent="violet"]{--red:#7c3aed;--red-dark:#5b21b6;--accent-rgb:124,58,237;--dark:#17131f}
+:root[data-accent="emerald"]{--red:#059669;--red-dark:#047857;--accent-rgb:5,150,105;--dark:#071713}
+:root[data-accent="crimson"]{--red:#e11d48;--red-dark:#be123c;--accent-rgb:225,29,72;--dark:#181112}
+:root[data-font="inter"]{--font-head:'Inter',sans-serif;--font-body:'Inter',sans-serif}
+:root[data-font="poppins"]{--font-head:'Poppins',sans-serif;--font-body:'Poppins',sans-serif}
+:root[data-font="manrope"]{--font-head:'Manrope',sans-serif;--font-body:'Manrope',sans-serif}
+:root[data-font="jakarta"]{--font-head:'Plus Jakarta Sans',sans-serif;--font-body:'Plus Jakarta Sans',sans-serif}
+:root[data-font="sora"]{--font-head:'Sora',sans-serif;--font-body:'Sora',sans-serif}
+:root[data-font="urbanist"]{--font-head:'Urbanist',sans-serif;--font-body:'Urbanist',sans-serif}
+:root[data-font="lexend"]{--font-head:'Lexend',sans-serif;--font-body:'Lexend',sans-serif}
+:root[data-font="spacegrotesk"]{--font-head:'Space Grotesk',sans-serif;--font-body:'Space Grotesk',sans-serif}
+:root[data-font="nunito"]{--font-head:'Nunito',sans-serif;--font-body:'Nunito',sans-serif}
+:root[data-font="worksans"]{--font-head:'Work Sans',sans-serif;--font-body:'Work Sans',sans-serif}
+:root[data-font="figtree"]{--font-head:'Figtree',sans-serif;--font-body:'Figtree',sans-serif}
+:root[data-font="librefranklin"]{--font-head:'Libre Franklin',sans-serif;--font-body:'Libre Franklin',sans-serif}
+:root[data-font="epilogue"]{--font-head:'Epilogue',sans-serif;--font-body:'Epilogue',sans-serif}
+:root[data-font="dmsans"]{--font-head:'DM Sans',sans-serif;--font-body:'DM Sans',sans-serif}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--text:#a4acba;--head:#f2f4f8;--line:#262c3b;--bg-alt:#12161f;--bg:#0a0d13;--surface:#161b26;--tint:rgba(var(--accent-rgb),.16)}}
+:root[data-theme="dark"]{color-scheme:dark;--text:#a4acba;--head:#f2f4f8;--line:#262c3b;--bg-alt:#12161f;--bg:#0a0d13;--surface:#161b26;--tint:rgba(var(--accent-rgb),.16)}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:var(--font-body),system-ui,sans-serif;color:var(--text);background:var(--bg-alt);line-height:1.75;min-height:100vh;display:flex;flex-direction:column;transition:background .2s ease,color .2s ease}
+a{color:var(--red);text-decoration:none}
+a:hover{text-decoration:underline}
+header{background:var(--surface);border-top:4px solid var(--dark);border-bottom:1px solid var(--line);padding:1.1rem 1.25rem;transition:background .2s ease,border-color .2s ease}
+.hd-wrap{max-width:760px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:1rem}
+.logo-txt{font-family:var(--font-head);font-size:1.15rem;font-weight:900;letter-spacing:-.03em;color:var(--head)}
+.logo-txt span{color:var(--red)}
+main{flex:1;max-width:760px;margin:0 auto;padding:4rem 1.25rem;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.code{font-family:var(--font-head);font-size:clamp(4rem,12vw,7rem);font-weight:900;color:var(--red);letter-spacing:-.03em;line-height:1}
+h1{font-family:var(--font-head);font-size:clamp(1.3rem,3.5vw,1.7rem);font-weight:800;color:var(--head);letter-spacing:-.02em;margin:.5rem 0 .75rem}
+p{font-size:.96rem;color:var(--text);max-width:32rem;margin-bottom:2rem}
+.btn-row{display:flex;gap:.9rem;flex-wrap:wrap;justify-content:center}
+.btn-home{display:inline-flex;align-items:center;gap:.5rem;background:linear-gradient(135deg,var(--red),var(--red-dark));color:#fff;font-weight:700;font-size:.9rem;padding:.75rem 1.5rem;border-radius:.5rem;box-shadow:0 10px 24px rgba(var(--accent-rgb),.2);transition:transform .15s,box-shadow .15s}
+.btn-home:hover{transform:translateY(-1px);box-shadow:0 14px 30px rgba(var(--accent-rgb),.28);text-decoration:none}
+.btn-ghost{display:inline-flex;align-items:center;gap:.5rem;background:var(--surface);color:var(--head);font-weight:700;font-size:.9rem;padding:.75rem 1.5rem;border-radius:.5rem;border:1.5px solid var(--line);transition:border-color .15s,color .15s}
+.btn-ghost:hover{border-color:var(--red);color:var(--red);text-decoration:none}
+footer{text-align:center;padding:2rem 1.25rem;font-size:.8rem;color:var(--text)}
+</style>
+</head>
+<body>
+<header>
+  <div class="hd-wrap">
+    <a href="/" class="logo-txt">Vidhyora <span>AI</span></a>
+  </div>
+</header>
+<main>
+  <div class="code">{{ error_code|default:"404" }}</div>
+  <h1>{{ error_title|default:"Page Not Found" }}</h1>
+  <p>{{ error_message|default:"The page you're looking for doesn't exist or may have been moved. Let's get you back on track." }}</p>
+  <div class="btn-row">
+    {% if error_retry %}<a href="" class="btn-home" onclick="location.reload();return false;"><i class="fas fa-rotate-right"></i>Try again</a>{% endif %}
+    <a href="/" class="{% if error_retry %}btn-ghost{% else %}btn-home{% endif %}"><i class="fas fa-robot"></i>Vidhyora AI</a>
+  </div>
+</main>
+<footer>&copy; 2026 Vidhyora AI. All rights reserved.</footer>
+<script>
+// Casual deterrent only, not real protection — anyone determined can still
+// reach DevTools (browser menu, other shortcuts, an extension), so nothing
+// sensitive should ever depend on this. Right-click and the common
+// inspect/view-source shortcuts are blocked to raise the bar for casual
+// copying; F12/Ctrl+Shift+I/J/C/Ctrl+U are the ones actually worth catching.
+document.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+document.addEventListener('keydown', function(e){
+  var k = e.key;
+  if (k === 'F12') { e.preventDefault(); return; }
+  if (e.ctrlKey && e.shiftKey && (k === 'I' || k === 'i' || k === 'J' || k === 'j' || k === 'C' || k === 'c')) { e.preventDefault(); return; }
+  if (e.ctrlKey && (k === 'U' || k === 'u')) { e.preventDefault(); }
+});
+</script>
+</body>
+</html>
