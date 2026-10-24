@@ -59,7 +59,7 @@ def test_connection():
         UPSTREAM_MODEL_KEY, key_setting=API_KEY_SETTING if own_key else 'NVIDIA_API_KEY',
         model_id=model_id, reasoning=thinking,
     )
-    return ok, message.replace(ai_chat.MODELS[UPSTREAM_MODEL_KEY]['label'] + ' (', 'Start Coding (', 1)
+    return ok, message.replace(ai_chat.MODELS[UPSTREAM_MODEL_KEY]['label'] + ' (', 'Code-X (', 1)
 
 
 def upstream_client():
@@ -166,24 +166,24 @@ def _authenticate(request):
     key = AICodingKey.resolve(raw_key)
     if not key or not key.user.is_active:
         return None, _error(
-            'Invalid or missing API key. Create one under Start coding in your Vidhyora account '
+            'Invalid or missing API key. Create one under Code-X in your Vidhyora account '
             'and sign in again with `opencode auth login`.',
             401, kind='authentication_error', code='invalid_api_key',
         )
     if not key.label and not MANUAL_SETUP_ENABLED:
         return None, _error(
             'Manual keys are switched off. Connect this computer with the one-command setup under '
-            'Start coding in your Vidhyora account instead.',
+            'Code-X in your Vidhyora account instead.',
             401, kind='authentication_error', code='manual_keys_disabled',
         )
     if not has_access(key.user):
         return None, _error(
-            'Your Vidhyora AI plan does not include Start coding. Upgrade your plan or ask the administrator.',
+            'Your Vidhyora AI plan does not include Code-X. Upgrade your plan or ask the administrator.',
             403, kind='permission_error', code='plan_required',
         )
     if not model_controls.is_enabled(CONTROL_KEY):
         return None, _error(
-            f'Start coding is switched off right now. {_contact()}',
+            f'Code-X is switched off right now. {_contact()}',
             503, kind='server_error', code='service_disabled',
         )
     return key, None
@@ -608,16 +608,16 @@ def key_generate(request):
     if not has_access(request.user):
         return JsonResponse({
             'status': 'error',
-            'detail': 'Start coding is part of the premium plan. Upgrade your plan to create a key.',
+            'detail': 'Code-X is part of the premium plan. Upgrade your plan to create a key.',
         }, status=403)
     if not model_controls.is_enabled(CONTROL_KEY):
         return JsonResponse({
-            'status': 'error', 'detail': f'Start coding is switched off right now. {_contact()}',
+            'status': 'error', 'detail': f'Code-X is switched off right now. {_contact()}',
         }, status=503)
     if not MANUAL_SETUP_ENABLED:
         return JsonResponse({
             'status': 'error',
-            'detail': 'Manual setup is switched off. Use the one-command setup under Start coding instead.',
+            'detail': 'Manual setup is switched off. Use the one-command setup under Code-X instead.',
         }, status=403)
     raw_key = AICodingKey.generate_for(request.user)
     return JsonResponse({'status': 'ok', 'api_key': raw_key, 'key_prefix': raw_key[:11]})
@@ -690,7 +690,7 @@ def device_start(request):
     if request.method != 'POST':
         return _error('Invalid request method. Use POST.', 405)
     if not model_controls.is_enabled(CONTROL_KEY):
-        return _compact({'error': 'disabled', 'message': f'Start coding is switched off right now. {_contact()}'}, 503)
+        return _compact({'error': 'disabled', 'message': f'Code-X is switched off right now. {_contact()}'}, 503)
     ip = _client_ip(request)
     if _throttle(f'coding:dev:start:{ip}', 10, 600):
         return _compact({'error': 'rate_limited', 'message': 'Too many setup attempts. Wait a few minutes and try again.'}, 429)

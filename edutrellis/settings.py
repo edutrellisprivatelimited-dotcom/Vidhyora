@@ -203,8 +203,15 @@ DROPBOX_IMAGE_ARCHIVE_ENABLED = not (
 )
 
 # The 24-hour automatic Dropbox backup timer (myapp.dropbox_backup.start_scheduler).
-# Off under tests so no test uploads the real database.
-DROPBOX_AUTO_BACKUP_ENABLED = DROPBOX_IMAGE_ARCHIVE_ENABLED
+# Only the live server (gunicorn, see Procfile) runs it. A computer running
+# `manage.py runserver` shares the same Dropbox folder, so its automatic
+# backup would replace the live site's with a copy of the local database.
+# Off under tests too. DROPBOX_AUTO_BACKUP=1 or 0 overrides this.
+_auto_backup_env = os.environ.get('DROPBOX_AUTO_BACKUP', '').strip()
+DROPBOX_AUTO_BACKUP_ENABLED = (
+    _auto_backup_env == '1' if _auto_backup_env in ('0', '1')
+    else DROPBOX_IMAGE_ARCHIVE_ENABLED and os.path.basename(sys.argv[0] if sys.argv else '').startswith('gunicorn')
+)
 
 # Long messages and long chats are shortened before they reach the chat model
 # (myapp.context_compress). Off under tests so no test calls the real model.

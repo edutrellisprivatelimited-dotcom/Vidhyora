@@ -27,7 +27,7 @@
   <div class="panel-head"><h3>{{ name }}</h3></div>
   <div class="conv-meta">
     <div><b>Email</b><span class="mono">{{ target.email|default:target.username }}</span></div>
-    <div><b>Plan</b>{% if has_access %}Can use OpenCode{% else %}<span class="badge oc-off">No Start coding access now</span>{% endif %}</div>
+    <div><b>Plan</b>{% if has_access %}Can use OpenCode{% else %}<span class="badge oc-off">No Code-X access now</span>{% endif %}</div>
     <div><b>Requests</b>{{ totals.requests }}</div>
     <div><b>Failed</b>{% if totals.errors %}<span class="badge oc-err">{{ totals.errors }}</span>{% else %}0{% endif %}</div>
     <div><b>Tokens</b>{% if tokens %}{{ tokens }}{% else %}—{% endif %}</div>

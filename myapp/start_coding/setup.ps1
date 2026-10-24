@@ -49,7 +49,7 @@ function Set-Prop($obj, $name, $value) {
 }
 
 Say ''
-Say "$Brand - Start coding" 'White'
+Say "$Brand - Code-X" 'White'
 Say "Sets up OpenCode with $ModelLabel on this computer." 'DarkGray'
 
 # ---------------------------------------------------------------- 1. OpenCode
@@ -153,4 +153,4 @@ Say ''
 if (-not (Get-Command opencode -ErrorAction SilentlyContinue)) {
     Say "If 'opencode' is not found, open a NEW PowerShell window first (the installer updates your PATH)." 'Yellow'
 }
-Say "First time in a project? Type /init inside OpenCode. Manage connected computers under Start coding in your $Brand account." 'DarkGray'
+Say "First time in a project? Type /init inside OpenCode. Manage connected computers under Code-X in your $Brand account." 'DarkGray'

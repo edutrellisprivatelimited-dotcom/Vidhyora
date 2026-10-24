@@ -1925,7 +1925,7 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
           <button type="button" class="acct-menu-item" data-account-panel="images" role="menuitem"><i class="fas fa-images"></i> My Images</button>
           <button type="button" class="acct-menu-item" data-account-panel="calls" role="menuitem"><i class="fas fa-phone-volume"></i> My calls</button>
           <button type="button" class="acct-menu-item" data-account-panel="api" role="menuitem"><i class="fas fa-key"></i> Get API</button>
-          <button type="button" class="acct-menu-item" data-account-panel="coding" role="menuitem"><i class="fas fa-terminal"></i> Start coding</button>
+          <button type="button" class="acct-menu-item" data-account-panel="coding" role="menuitem"><i class="fas fa-terminal"></i> Code-X</button>
           <button type="button" class="acct-menu-item" id="exportAllMenuBtn" role="menuitem"><i class="fas fa-file-export"></i> Export all chats</button>
           {% if ai_pwa_ready %}<button type="button" class="acct-menu-item" id="installAppMenuBtn" role="menuitem"><i class="fas fa-mobile-screen-button"></i> Install app</button>{% endif %}
           <button type="button" class="acct-menu-item" id="guideMenuBtn" role="menuitem"><i class="fas fa-circle-question"></i> How to use</button>
@@ -2248,7 +2248,7 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
     <button type="button" class="account-tab" data-account-tab="images" role="tab">My Images</button>
     <button type="button" class="account-tab" data-account-tab="calls" role="tab">My calls</button>
     <button type="button" class="account-tab" data-account-tab="api" role="tab">Get API</button>
-    <button type="button" class="account-tab" data-account-tab="coding" role="tab">Start coding</button>
+    <button type="button" class="account-tab" data-account-tab="coding" role="tab">Code-X</button>
     {% if ai_user.is_superuser %}<button type="button" class="account-tab" data-account-tab="joinlinks" role="tab">Join by link</button>{% endif %}
   </div>
   <div class="account-content">
@@ -7960,11 +7960,11 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
 
     if (!coding.allowed) {
       var upgrade = coding.purchase_url ? '<br><br><a class="account-plan-btn" href="' + escHtml(coding.purchase_url) + '">Request premium access</a>' : '';
-      panel.innerHTML = hero + '<div class="account-empty"><i class="fas fa-lock"></i><br><br>Start coding is included with the premium plan and staff accounts.' + upgrade + '</div>';
+      panel.innerHTML = hero + '<div class="account-empty"><i class="fas fa-lock"></i><br><br>Code-X is included with the premium plan and staff accounts.' + upgrade + '</div>';
       return;
     }
     if (!coding.enabled) {
-      panel.innerHTML = hero + '<div class="account-empty"><i class="fas fa-power-off"></i><br><br>Start coding is switched off right now.<br>Please contact the administrator at ' + escHtml(coding.support_email) + '.</div>';
+      panel.innerHTML = hero + '<div class="account-empty"><i class="fas fa-power-off"></i><br><br>Code-X is switched off right now.<br>Please contact the administrator at ' + escHtml(coding.support_email) + '.</div>';
       return;
     }
 

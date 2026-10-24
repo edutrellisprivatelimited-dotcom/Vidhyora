@@ -40,12 +40,12 @@ def definitions():
         {'id': 'terra', 'kind': KIND_TEXT, 'model_key': ai_chat.TERRA_MODEL_KEY, 'swap_model': True,
          'note': '', 'keys': [('NVIDIA_TERRA_API_KEY', nvidia)]},
         {'id': 'coding', 'kind': KIND_TEXT, 'model_key': coding_api.CONTROL_KEY, 'swap_model': True,
-         'title': 'Start Coding (OpenCode CLI)', 'key_fallback': 'NVIDIA_API_KEY',
+         'title': 'Code-X (OpenCode CLI)', 'key_fallback': 'NVIDIA_API_KEY',
          'keys': [(coding_api.API_KEY_SETTING, nvidia)],
-         'enable_text': 'let users connect the OpenCode terminal agent to Vidhyora Code (Start coding in the account menu)',
+         'enable_text': 'let users connect the OpenCode terminal agent to Vidhyora Code (Code-X in the account menu)',
          'note': 'Powers the terminal coding agent through /api/v1/code/ with its own key and model. Until a key '
                  'is saved here it uses the Vidhyora Chat key above, and until a model is changed here it uses the '
-                 'Vidhyora Code model. Users sign in with a personal key made under Start coding; paid plans and staff only. '
+                 'Vidhyora Code model. Users sign in with a personal key made under Code-X; paid plans and staff only. '
                  'Pick a model that supports tool calling — the coding agent needs it.'},
         {'id': 'image', 'kind': KIND_IMAGE, 'model_key': ai_chat.FLUX_KLEIN_4B_MODEL_KEY,
          'note': 'Text-to-image and photo editing.', 'keys': [('NVIDIA_FLUX_API_KEY', nvidia)]},

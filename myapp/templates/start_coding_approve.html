@@ -41,7 +41,7 @@ input:focus{outline:none;border-color:var(--accent)}
 </head>
 <body>
 <main class="card">
-  <p class="brand">{{ brand }} AI · Start coding</p>
+  <p class="brand">{{ brand }} AI · Code-X</p>
 
   {% if state == 'confirm' %}
     <h1>Connect OpenCode on this computer?</h1>
@@ -53,7 +53,7 @@ input:focus{outline:none;border-color:var(--accent)}
       <div><dt>From IP address</dt><dd>{{ row.requester_ip|default:"unknown" }}</dd></div>
       <div><dt>Account</dt><dd>{{ user_name }}</dd></div>
     </dl>
-    <p class="warn">Only approve if you just ran the setup command yourself. Approving gives that computer access to {{ brand }} Code on your plan; you can remove it later under Start coding.</p>
+    <p class="warn">Only approve if you just ran the setup command yourself. Approving gives that computer access to {{ brand }} Code on your plan; you can remove it later under Code-X.</p>
     <form method="post" class="row">
       {% csrf_token %}
       <input type="hidden" name="code" value="{{ user_code }}">
@@ -72,7 +72,7 @@ input:focus{outline:none;border-color:var(--accent)}
       </li>
       <li>First time in a project? Type <code>/init</code> inside OpenCode, then just describe what you want to build or fix.</li>
     </ol>
-    <p class="muted">Didn’t see “All set”? Run the setup command again, or manage connected computers under <strong>Start coding</strong> in your account menu.</p>
+    <p class="muted">Didn’t see “All set”? Run the setup command again, or manage connected computers under <strong>Code-X</strong> in your account menu.</p>
     <script>
     document.addEventListener('click', function(event){
       var button = event.target.closest('[data-copy]');
@@ -124,12 +124,12 @@ input:focus{outline:none;border-color:var(--accent)}
     </script>
 
   {% elif state == 'no_plan' %}
-    <h1>Start coding needs a premium plan</h1>
+    <h1>Code-X needs a premium plan</h1>
     <p>Your account is on the free plan, so this terminal can’t be connected yet.</p>
     <a class="btn primary" href="{{ purchase_url }}">See plans</a>
 
   {% elif state == 'disabled' %}
-    <h1>Start coding is switched off</h1>
+    <h1>Code-X is switched off</h1>
     <p>Please contact the administrator at {{ support_email }}.</p>
 
   {% elif state == 'done' %}

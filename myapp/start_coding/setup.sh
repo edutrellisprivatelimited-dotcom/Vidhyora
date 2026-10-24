@@ -47,7 +47,7 @@ for tool in python3 python node; do
 done
 
 say ""
-say "${BOLD}${BRAND} - Start coding${OFF}"
+say "${BOLD}${BRAND} - Code-X${OFF}"
 say "${DIM}Sets up OpenCode with ${MODEL_LABEL} on this computer.${OFF}"
 
 # ---------------------------------------------------------------- 1. OpenCode
@@ -215,4 +215,4 @@ say ""
 if ! command -v opencode >/dev/null 2>&1; then
   warn "If 'opencode' is not found, open a NEW terminal window first (the installer updates your PATH)."
 fi
-say "${DIM}First time in a project? Type /init inside OpenCode. Manage connected computers under Start coding in your ${BRAND} account.${OFF}"
+say "${DIM}First time in a project? Type /init inside OpenCode. Manage connected computers under Code-X in your ${BRAND} account.${OFF}"

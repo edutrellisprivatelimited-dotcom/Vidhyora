@@ -226,7 +226,7 @@ class AutomaticBackupTests(SimpleTestCase):
                 'latest.json', *(p.rsplit('/', 1)[1] for p in uploaded))
             with patch.object(backup, 'db_path', return_value=self._database(folder)), patch.object(backup, '_client', return_value=dbx), patch.object(backup, '_image_files', return_value=[]):
                 filename = backup.create_backup(SimpleNamespace(), automatic=True)
-        self.assertTrue(filename.startswith(backup.AUTO_PREFIX))
+        self.assertRegex(filename, r'^Vidhyora_Auto-Backup_\d\d-[A-Z][a-z]{2}-\d{4}_\d\d-\d\d-\d\d-[AP]M\.zip$')
         dbx.files_delete_v2.assert_called_once_with(f'{backup.BACKUP_FOLDER}/auto_backup_20260101_000000_000000.zip')
 
     def test_the_previous_automatic_backup_is_kept_when_the_upload_fails(self):
@@ -245,7 +245,8 @@ class AutomaticBackupTests(SimpleTestCase):
             dbx.files_list_folder.return_value = self._listing('auto_backup_20260101_000000_000000.zip')
             with patch.object(backup, 'db_path', return_value=self._database(folder)), patch.object(backup, '_client', return_value=dbx), patch.object(backup, '_image_files', return_value=[]):
                 filename = backup.create_backup(SimpleNamespace())
-        self.assertTrue(filename.startswith('backup_'))
+        self.assertTrue(filename.startswith('Vidhyora_Backup_'))
+        self.assertFalse(backup.is_automatic(filename))
         dbx.files_delete_v2.assert_not_called()
 
     def _run_if_due(self, entries, enabled=True):
@@ -347,3 +348,27 @@ class BackupPageActionTests(TestCase):
         self.assertRedirects(direct, 'https://dl.dropboxusercontent.com/x', fetch_redirect_response=False)
         self.assertEqual(only_db.content, database)
         self.assertIn('backup_1.sqlite3', only_db['Content-Disposition'])
+
+
+class BackupNameTests(TestCase):
+    def test_backups_are_named_after_the_ai_with_a_readable_local_date_and_time(self):
+        import datetime
+        from myapp.models import SiteCustomization
+        site = SiteCustomization.get_solo()
+        site.ai_brand_name = 'Study Buddy_auto'
+        site.save()
+        when = datetime.datetime(2026, 10, 24, 12, 4, 55, tzinfo=datetime.timezone.utc)  # 05:34:55 PM in India
+        self.assertEqual(backup.backup_filename(when=when), 'Study-Buddy-auto_Backup_24-Oct-2026_05-34-55-PM.zip')
+        automatic = backup.backup_filename(automatic=True, when=when)
+        self.assertEqual(automatic, 'Study-Buddy-auto_Auto-Backup_24-Oct-2026_05-34-55-PM.zip')
+        self.assertTrue(backup.is_automatic(automatic))
+        self.assertFalse(backup.is_automatic(backup.backup_filename(when=when)))
+        self.assertTrue(backup.is_automatic('auto_backup_20261024_173423_273766.zip'))  # older name
+        self.assertFalse(backup.is_automatic('backup_20261016_212929_599011.zip'))
+
+    def test_a_blank_ai_name_falls_back_to_vidhyora(self):
+        from myapp.models import SiteCustomization
+        site = SiteCustomization.get_solo()
+        site.ai_brand_name = '  '
+        site.save()
+        self.assertTrue(backup.backup_filename().startswith('Vidhyora_Backup_'))

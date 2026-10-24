@@ -228,6 +228,7 @@ document.querySelectorAll('[data-reveal]').forEach(function(button){
           {% if settings_obj.auto_backup_enabled %}<span class="dbx-badge ok"><i class="fas fa-circle-check"></i> On</span>{% else %}<span class="dbx-badge idle"><i class="fas fa-circle-pause"></i> Off</span>{% endif %}
         </div>
         <p>Each automatic backup replaces the previous one, so your Dropbox doesn't fill up. The old one is removed only after the new one is safely saved.</p>
+        {% if not auto_backup_runs_here %}<p><b>Only the live server makes automatic backups.</b> This copy of the site (for example on your own computer) never does, so it can't replace the live site's backup with its own data.</p>{% endif %}
         {% if settings_obj.auto_backup_enabled %}
           {% if not settings_obj.is_configured or not dropbox_installed %}
           <p><b>Waiting for Dropbox.</b> Automatic backups start once Dropbox is connected above.</p>

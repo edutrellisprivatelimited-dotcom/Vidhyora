@@ -20,6 +20,7 @@ from urllib.parse import urlencode
 
 from django.conf import settings as dj_settings
 from django.core.cache import cache
+from django.utils import timezone
 
 try:
     import dropbox
@@ -30,9 +31,37 @@ BACKUP_ROOT = '/EduTrellis Store'
 BACKUP_FOLDER = f'{BACKUP_ROOT}/backups'
 LATEST_NAME = 'db_latest.sqlite3'
 LATEST_BUNDLE_NAME = 'backup_latest.zip'
-# Automatic backups are named apart from "Backup Now" ones so each new
-# automatic backup can replace the previous one without touching those.
-AUTO_PREFIX = 'auto_backup_'
+# Backups are named "<AI name>_Backup_<date>_<time>.zip", e.g.
+# Vidhyora_Backup_24-Oct-2026_05-34-55-PM.zip, with the AI name from the
+# dashboard Customize page. Automatic ones say "_Auto-Backup_" instead so
+# each new automatic backup can replace the previous one without touching
+# "Backup Now" ones; the brand part never contains "_" (see _brand_for_file),
+# so that marker can't appear in it by chance. Before this naming they were
+# "auto_backup_<stamp>.zip" and "backup_<stamp>.zip".
+AUTO_MARK = '_Auto-Backup_'
+LEGACY_AUTO_PREFIX = 'auto_backup_'
+DEFAULT_BRAND = 'Vidhyora'
+
+
+def is_automatic(name):
+    return name.startswith(LEGACY_AUTO_PREFIX) or AUTO_MARK in name
+
+
+def _brand_for_file():
+    """The AI name from the Customize page, made safe for a file name."""
+    from myapp.models import SiteCustomization
+    try:
+        brand = SiteCustomization.get_solo().ai_brand_name or ''
+    except Exception:  # e.g. a restored database from before that setting existed
+        brand = ''
+    brand = re.sub(r'[^A-Za-z0-9-]+', '-', brand).strip('-')[:40]
+    return brand or DEFAULT_BRAND
+
+
+def backup_filename(automatic=False, when=None):
+    when = timezone.localtime(when)
+    kind = AUTO_MARK if automatic else '_Backup_'
+    return f'{_brand_for_file()}{kind}{when:%d-%b-%Y_%I-%M-%S-%p}.zip'
 logger = logging.getLogger(__name__)
 
 
@@ -350,8 +379,7 @@ def create_backup(settings_obj, *, missing_images=None, progress=None, automatic
                     archive.writestr('media/' + name.replace('\\', '/'), image_data, compress_type=zipfile.ZIP_STORED)
                 archive.writestr('backup_manifest.json', json.dumps({'version': 1, 'missing_images': skipped}))
 
-            stamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')
-            filename = f'{AUTO_PREFIX if automatic else "backup_"}{stamp}.zip'
+            filename = backup_filename(automatic)
             size = bundle_path.stat().st_size
             logger.info('Dropbox archive ready: %d bytes; starting upload', size)
             say(f'Uploading to Dropbox: 0 of {size // (1024 * 1024)} MB')
@@ -367,7 +395,7 @@ def create_backup(settings_obj, *, missing_images=None, progress=None, automatic
             say('Removing the previous automatic backup…')
             try:
                 for entry in _folder_entries(dbx):
-                    if entry.name.startswith(AUTO_PREFIX) and entry.name != filename:
+                    if is_automatic(entry.name) and entry.name != filename:
                         dbx.files_delete_v2(f'{BACKUP_FOLDER}/{entry.name}')
             except Exception:
                 logger.warning('Automatic backup saved, but an older one could not be removed', exc_info=True)
@@ -695,7 +723,7 @@ _last_auto_attempt = 0.0
 def last_automatic_backup(entries):
     """When the newest automatic backup in a [(name, modified)] listing was
     uploaded, in the same form the listing uses, or None."""
-    return max((modified for name, modified in entries if name.startswith(AUTO_PREFIX)), default=None)
+    return max((modified for name, modified in entries if is_automatic(name)), default=None)
 
 
 def run_automatic_backup_if_due():

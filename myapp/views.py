@@ -2371,7 +2371,7 @@ def dashboard_backup(request):
                 # naive this rendered as raw UTC clock time mislabeled as local.
                 backups = [
                     {'name': name, 'client_modified': timezone.localtime(modified.replace(tzinfo=dt_timezone.utc)),
-                     'automatic': name.startswith(dropbox_backup.AUTO_PREFIX)}
+                     'automatic': dropbox_backup.is_automatic(name)}
                     for name, modified in dropbox_backup.list_backup_entries(settings_obj)
                 ]
             except dropbox_backup.BackupError as exc:
@@ -2386,6 +2386,7 @@ def dashboard_backup(request):
         'last_auto_backup': last_auto,
         'next_auto_backup': next_auto if next_auto and next_auto > timezone.now() else None,
         'auto_backup_hours': dropbox_backup.AUTO_BACKUP_HOURS,
+        'auto_backup_runs_here': settings.DROPBOX_AUTO_BACKUP_ENABLED,
         'active': 'backup', 'settings_obj': settings_obj, 'backups': backups,
         'list_error': list_error, 'dropbox_installed': installed,
         'backup_folder': dropbox_backup.BACKUP_FOLDER,
