@@ -43,6 +43,16 @@ class FriendlyErrorPageTests(TestCase):
         self.assertNoDeveloperDetails(response)
         self.assertIn('secret detail', '\n'.join(logs.output))  # still in the server log
 
+    def test_the_site_owner_sees_what_broke(self):
+        from django.contrib.auth.models import User
+        owner = User.objects.create_superuser('owner@example.com', 'owner@example.com', 'pw')
+        self.client.force_login(owner)
+        with self.assertLogs('myapp.middleware', 'ERROR'):
+            response = self.client.get('/crash/', **BROWSER)
+        self.assertContains(response, 'Something went wrong', status_code=500)
+        self.assertContains(response, 'only the site owner sees this', status_code=500)
+        self.assertContains(response, 'RuntimeError: secret detail', status_code=500)
+
     def test_a_crash_in_an_api_call_answers_with_json(self):
         with self.assertLogs('myapp.middleware', 'ERROR'):
             response = self.client.get('/AI/api/crash/', HTTP_ACCEPT='application/json')

@@ -563,19 +563,70 @@ def delete_all_backups(settings_obj):
         raise _connection_error(exc, 'Could not delete the backups on Dropbox.')
 
 
-def restore_backup(settings_obj, filename):
-    """Restore an image bundle or a legacy database-only backup."""
-    if not filename or '/' in filename or '\\' in filename:
+def _backup_path(filename):
+    """The Dropbox path of one file in the backup folder, refusing anything
+    that could point outside it."""
+    if not filename or '/' in filename or '\\' in filename or filename in ('.', '..'):
         raise BackupError('Invalid backup filename.')
+    return f'{BACKUP_FOLDER}/{filename}'
 
+
+def _download(settings_obj, filename):
+    path = _backup_path(filename)
     try:
-        dbx = _client(settings_obj)
-        _, resp = dbx.files_download(f'{BACKUP_FOLDER}/{filename}')
-        content = resp.content
+        _, resp = _client(settings_obj).files_download(path)
+        return resp.content
     except BackupError:
         raise
     except Exception as exc:
         raise _connection_error(exc, 'Could not download that backup from Dropbox.')
+
+
+def delete_backup(settings_obj, filename):
+    """Delete one backup file from the backup folder."""
+    path = _backup_path(filename)
+    try:
+        _client(settings_obj).files_delete_v2(path)
+    except BackupError:
+        raise
+    except Exception as exc:
+        if 'not_found' in str(exc).lower():
+            raise BackupError(f'"{filename}" is not on Dropbox any more. It may have been deleted already.')
+        raise _connection_error(exc, 'Could not delete that backup on Dropbox.')
+    forget_listing(settings_obj)
+
+
+def download_link(settings_obj, filename):
+    """A direct Dropbox link to one backup file. It works for four hours."""
+    path = _backup_path(filename)
+    try:
+        return _client(settings_obj).files_get_temporary_link(path).link
+    except BackupError:
+        raise
+    except Exception as exc:
+        raise _connection_error(exc, 'Could not get a download link from Dropbox.')
+
+
+def database_file(settings_obj, filename):
+    """Just the database (SQLite file) from a backup: the backup itself for an
+    older .sqlite3 backup, or the db.sqlite3 inside a ZIP backup."""
+    content = _download(settings_obj, filename)
+    if filename.endswith('.zip'):
+        try:
+            with zipfile.ZipFile(io.BytesIO(content)) as archive:
+                content = archive.read('db.sqlite3')
+        except KeyError:
+            raise BackupError('This ZIP has no database inside it, so it is not a full backup.')
+        except zipfile.BadZipFile:
+            raise BackupError('The backup archive is damaged or incomplete.')
+    if not content.startswith(b'SQLite format 3\x00'):
+        raise BackupError('The backup does not contain a valid SQLite database.')
+    return content
+
+
+def restore_backup(settings_obj, filename):
+    """Restore an image bundle or a legacy database-only backup."""
+    content = _download(settings_obj, filename)
 
     media_files = []
     if filename.endswith('.zip'):

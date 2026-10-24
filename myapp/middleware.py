@@ -1,4 +1,5 @@
 import logging
+import traceback
 
 from django.conf import settings
 from django.core.exceptions import MiddlewareNotUsed
@@ -47,16 +48,22 @@ class FriendlyErrorMiddleware:
         if isinstance(exception, Http404):
             return self._error_response(request, 404)
         logger.error('Error on %s %s', request.method, request.path, exc_info=exception)
-        return self._error_response(request, 500)
+        return self._error_response(request, 500, exception)
 
     @staticmethod
-    def _error_response(request, status):
+    def _error_response(request, status, exception=None):
         wants_page = 'text/html' in request.headers.get('Accept', '')
         if '/api/' in request.path and not wants_page:
             detail = 'Not found.' if status == 404 else 'Something went wrong. Please try again.'
             return JsonResponse({'status': 'error', 'detail': detail}, status=status)
+        context = {}
+        user = getattr(request, 'user', None)
+        if exception is not None and user is not None and user.is_superuser:
+            # Only the site owner sees what broke, so a problem can be fixed
+            # without reading the server log. Visitors never get this.
+            context['error_detail'] = ''.join(traceback.format_exception(exception))[-4000:]
         try:
-            return render(request, '404.html' if status == 404 else '500.html', status=status)
+            return render(request, '404.html' if status == 404 else '500.html', context, status=status)
         except Exception:
             # The page itself could not be built (say the database is down):
             # a bare message still beats Django's developer page.

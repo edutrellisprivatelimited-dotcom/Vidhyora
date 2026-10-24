@@ -1,10 +1,12 @@
 from django.urls import path
 from django.views.generic import RedirectView
-from myapp import ai_calls, api_checker, calls_dashboard, coding_api, coding_dashboard, support_chat, views
+from myapp import ai_calls, api_checker, calls_dashboard, coding_api, coding_dashboard, join_links, support_chat, views
 
 urlpatterns = [
     path('', views.ai_page, name='home'),
     path('home/', views.home_page, name='home_page'),
+    path('join/<str:token>/', join_links.join_page, name='join_link'),
+    path('join/<str:token>/check/', join_links.join_check_email, name='join_link_check'),
     path('chats/', support_chat.chats_page, name='chats_page'),
     path('chats/reset/<str:token>/', support_chat.reset_page, name='chats_reset'),
     path('chats/api/signup/', support_chat.api_signup, name='chats_signup'),
@@ -53,6 +55,8 @@ urlpatterns = [
     path('store/dashboard/signups/<int:pk>/reset-password/', views.dashboard_signup_reset_password, name='dashboard_signup_reset_password'),
     path('store/dashboard/signups/<int:pk>/delete/', views.dashboard_signup_delete, name='dashboard_signup_delete'),
     path('store/dashboard/ai/', views.dashboard_ai_management, name='dashboard_ai_management'),
+    path('store/dashboard/join-links/', join_links.dashboard_links, name='dashboard_join_links'),
+    path('store/dashboard/join-links/<int:pk>/remove/', join_links.dashboard_link_remove, name='dashboard_join_link_remove'),
     path('store/dashboard/ai/message-template/', views.dashboard_ai_message_template_save, name='dashboard_ai_message_template_save'),
     path('store/dashboard/ai/grant/', views.dashboard_ai_grant, name='dashboard_ai_grant'),
     path('store/dashboard/ai/<int:pk>/revoke/', views.dashboard_ai_revoke, name='dashboard_ai_revoke'),
@@ -100,6 +104,8 @@ urlpatterns = [
     path('store/dashboard/backup/cancel/', views.dashboard_backup_cancel, name='dashboard_backup_cancel'),
     path('store/dashboard/backup/restore/', views.dashboard_backup_restore, name='dashboard_backup_restore'),
     path('store/dashboard/backup/delete-all/', views.dashboard_backup_delete_all, name='dashboard_backup_delete_all'),
+    path('store/dashboard/backup/delete/', views.dashboard_backup_delete, name='dashboard_backup_delete'),
+    path('store/dashboard/backup/download/', views.dashboard_backup_download, name='dashboard_backup_download'),
     path('store/dashboard/logout/', views.dashboard_logout, name='dashboard_logout'),
 
     path('AI/manifest.json', views.ai_manifest, name='ai_manifest'),
@@ -137,6 +143,8 @@ urlpatterns = [
     path('AI/api/notes/<int:note_id>/update/', views.ai_note_update, name='ai_note_update'),
     path('AI/api/notes/<int:note_id>/delete/', views.ai_note_delete, name='ai_note_delete'),
     path('AI/api/account/', views.ai_account_details, name='ai_account_details'),
+    path('AI/api/join-links/', join_links.api_links, name='ai_join_links'),
+    path('AI/api/join-links/<int:pk>/remove/', join_links.api_link_remove, name='ai_join_link_remove'),
     path('AI/api/images/delete-all/', views.ai_images_delete_all, name='ai_images_delete_all'),
     path('AI/api/images/download-all/', views.ai_images_download_all, name='ai_images_download_all'),
     path('AI/api/calls/start/', ai_calls.start, name='ai_call_start'),

@@ -6,55 +6,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>{{ error_title|default:"Page Not Found" }} — Vidhyora AI</title>
 <meta name="robots" content="noindex, follow">
-<script>
-// Use the same device-level appearance choices as the AI frontend before
-// first paint, so even an error page never flashes the old red theme.
-(function(){
-  try {
-    var saved = localStorage.getItem('ai_theme');
-    if (saved === 'light' || saved === 'dark') document.documentElement.setAttribute('data-theme', saved);
-    var colorDefaultVersion = 'emerald-v1';
-    if (localStorage.getItem('ai_color_default_version') !== colorDefaultVersion) {
-      localStorage.setItem('ai_color_theme', 'emerald');
-      localStorage.setItem('ai_color_default_version', colorDefaultVersion);
-    }
-    var accent = localStorage.getItem('ai_color_theme');
-    if (['orange','blue','violet','emerald','crimson'].indexOf(accent) !== -1) {
-      document.documentElement.setAttribute('data-accent', accent);
-    }
-    var font = localStorage.getItem('ai_font_theme');
-    if (['default','inter','poppins','manrope','jakarta','sora','urbanist','lexend','spacegrotesk','nunito','worksans','figtree','librefranklin','epilogue','dmsans'].indexOf(font) !== -1) {
-      document.documentElement.setAttribute('data-font', font);
-    }
-  } catch (e) {}
-})();
-</script>
-{% if SITE_FAVICON_URL %}<link rel="icon" href="{{ SITE_FAVICON_URL }}">{% else %}<link rel="icon" href="{% static 'favicon.ico' %}" type="image/x-icon">{% endif %}
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700;800&family=Poppins:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@400;500;600;700;800;900&family=Urbanist:wght@400;500;600;700;800;900&family=Lexend:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=Nunito:wght@400;500;600;700;800;900&family=Work+Sans:wght@400;500;600;700;800&family=Figtree:wght@400;500;600;700;800;900&family=Libre+Franklin:wght@400;500;600;700;800;900&family=Epilogue:wght@400;500;600;700;800;900&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+{% include "_ai_theme_head.html" %}
 <style>
-:root{color-scheme:light;--red:#059669;--red-dark:#047857;--accent-rgb:5,150,105;--dark:#071713;--text:#555f6d;--head:#111418;--line:#e7eaf0;--bg-alt:#f8f9fc;--bg:#fff;--surface:#fff;--tint:rgba(var(--accent-rgb),.09);--font-head:'Outfit',sans-serif;--font-body:'Inter',sans-serif}
-:root[data-accent="orange"]{--red:#ff7a00;--red-dark:#d95f00;--accent-rgb:255,122,0;--dark:#101114}
-:root[data-accent="blue"]{--red:#2563eb;--red-dark:#1747b8;--accent-rgb:37,99,235;--dark:#101827}
-:root[data-accent="violet"]{--red:#7c3aed;--red-dark:#5b21b6;--accent-rgb:124,58,237;--dark:#17131f}
-:root[data-accent="emerald"]{--red:#059669;--red-dark:#047857;--accent-rgb:5,150,105;--dark:#071713}
-:root[data-accent="crimson"]{--red:#e11d48;--red-dark:#be123c;--accent-rgb:225,29,72;--dark:#181112}
-:root[data-font="inter"]{--font-head:'Inter',sans-serif;--font-body:'Inter',sans-serif}
-:root[data-font="poppins"]{--font-head:'Poppins',sans-serif;--font-body:'Poppins',sans-serif}
-:root[data-font="manrope"]{--font-head:'Manrope',sans-serif;--font-body:'Manrope',sans-serif}
-:root[data-font="jakarta"]{--font-head:'Plus Jakarta Sans',sans-serif;--font-body:'Plus Jakarta Sans',sans-serif}
-:root[data-font="sora"]{--font-head:'Sora',sans-serif;--font-body:'Sora',sans-serif}
-:root[data-font="urbanist"]{--font-head:'Urbanist',sans-serif;--font-body:'Urbanist',sans-serif}
-:root[data-font="lexend"]{--font-head:'Lexend',sans-serif;--font-body:'Lexend',sans-serif}
-:root[data-font="spacegrotesk"]{--font-head:'Space Grotesk',sans-serif;--font-body:'Space Grotesk',sans-serif}
-:root[data-font="nunito"]{--font-head:'Nunito',sans-serif;--font-body:'Nunito',sans-serif}
-:root[data-font="worksans"]{--font-head:'Work Sans',sans-serif;--font-body:'Work Sans',sans-serif}
-:root[data-font="figtree"]{--font-head:'Figtree',sans-serif;--font-body:'Figtree',sans-serif}
-:root[data-font="librefranklin"]{--font-head:'Libre Franklin',sans-serif;--font-body:'Libre Franklin',sans-serif}
-:root[data-font="epilogue"]{--font-head:'Epilogue',sans-serif;--font-body:'Epilogue',sans-serif}
-:root[data-font="dmsans"]{--font-head:'DM Sans',sans-serif;--font-body:'DM Sans',sans-serif}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--text:#a4acba;--head:#f2f4f8;--line:#262c3b;--bg-alt:#12161f;--bg:#0a0d13;--surface:#161b26;--tint:rgba(var(--accent-rgb),.16)}}
-:root[data-theme="dark"]{color-scheme:dark;--text:#a4acba;--head:#f2f4f8;--line:#262c3b;--bg-alt:#12161f;--bg:#0a0d13;--surface:#161b26;--tint:rgba(var(--accent-rgb),.16)}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:var(--font-body),system-ui,sans-serif;color:var(--text);background:var(--bg-alt);line-height:1.75;min-height:100vh;display:flex;flex-direction:column;transition:background .2s ease,color .2s ease}
 a{color:var(--red);text-decoration:none}
@@ -72,6 +25,9 @@ p{font-size:.96rem;color:var(--text);max-width:32rem;margin-bottom:2rem}
 .btn-home:hover{transform:translateY(-1px);box-shadow:0 14px 30px rgba(var(--accent-rgb),.28);text-decoration:none}
 .btn-ghost{display:inline-flex;align-items:center;gap:.5rem;background:var(--surface);color:var(--head);font-weight:700;font-size:.9rem;padding:.75rem 1.5rem;border-radius:.5rem;border:1.5px solid var(--line);transition:border-color .15s,color .15s}
 .btn-ghost:hover{border-color:var(--red);color:var(--red);text-decoration:none}
+.err-detail{width:100%;max-width:720px;margin-top:2rem;text-align:left;border:1px solid var(--line);border-radius:.6rem;background:var(--surface)}
+.err-detail summary{cursor:pointer;padding:.7rem 1rem;font-size:.85rem;font-weight:700;color:var(--head)}
+.err-detail pre{margin:0;padding:0 1rem 1rem;font-size:.72rem;line-height:1.5;white-space:pre-wrap;word-break:break-word;color:var(--text);max-height:360px;overflow:auto}
 footer{text-align:center;padding:2rem 1.25rem;font-size:.8rem;color:var(--text)}
 </style>
 </head>
@@ -89,6 +45,7 @@ footer{text-align:center;padding:2rem 1.25rem;font-size:.8rem;color:var(--text)}
     {% if error_retry %}<a href="" class="btn-home" onclick="location.reload();return false;"><i class="fas fa-rotate-right"></i>Try again</a>{% endif %}
     <a href="/" class="{% if error_retry %}btn-ghost{% else %}btn-home{% endif %}"><i class="fas fa-robot"></i>Vidhyora AI</a>
   </div>
+  {% if error_detail %}<details class="err-detail"><summary><i class="fas fa-bug"></i> Error details — only the site owner sees this</summary><pre>{{ error_detail }}</pre></details>{% endif %}
 </main>
 <footer>&copy; 2026 Vidhyora AI. All rights reserved.</footer>
 <script>

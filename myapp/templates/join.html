@@ -1,0 +1,253 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>You're invited — {{ SITE_AI_BRAND_NAME|default:"Vidhyora" }} AI</title>
+<meta name="robots" content="noindex, nofollow">
+{% include "_ai_theme_head.html" %}
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:var(--font-body),system-ui,sans-serif;color:var(--text);background:var(--bg);line-height:1.6;min-height:100vh;display:flex;flex-direction:column;overflow-x:hidden}
+body::before{content:"";position:fixed;inset:-30vh -20vw auto;height:80vh;background:radial-gradient(closest-side,rgba(var(--accent-rgb),.22),transparent 70%);pointer-events:none;z-index:0}
+header,main,footer{position:relative;z-index:1}
+header{padding:1.1rem 1.25rem}
+.hd-wrap{max-width:980px;margin:0 auto}
+.logo-txt{font-family:var(--font-head);font-size:1.2rem;font-weight:900;letter-spacing:-.03em;color:var(--head);text-decoration:none}
+.logo-txt span{color:var(--red)}
+main{flex:1;width:100%;max-width:520px;margin:0 auto;padding:1.5rem 1rem 3rem;display:flex;flex-direction:column;justify-content:center}
+.invite-badge{align-self:center;display:inline-flex;align-items:center;gap:.45rem;padding:.35rem .85rem;border-radius:50px;background:var(--tint);color:var(--red);font-size:.78rem;font-weight:800;letter-spacing:.02em}
+.hero{text-align:center;margin:1rem 0 1.6rem}
+.hero h1{font-family:var(--font-head);font-size:clamp(1.7rem,6vw,2.3rem);font-weight:900;letter-spacing:-.03em;color:var(--head);line-height:1.15}
+.hero h1 span{color:var(--red)}
+.hero p{margin-top:.6rem;font-size:.95rem}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:1.5rem;box-shadow:0 24px 60px rgba(0,0,0,.12)}
+.steps{display:flex;gap:.4rem;margin-bottom:1.3rem}
+.steps i{flex:1;height:5px;border-radius:50px;background:var(--line);transition:background .25s}
+.steps i.done{background:var(--red)}
+.step[hidden]{display:none}
+.step h2{font-family:var(--font-head);font-size:1.2rem;font-weight:800;color:var(--head);letter-spacing:-.02em}
+.step .lead{font-size:.86rem;margin:.25rem 0 1.1rem}
+.field{display:flex;flex-direction:column;gap:.35rem;margin-bottom:.9rem}
+.field label{font-size:.78rem;font-weight:750;color:var(--head)}
+.input-wrap{position:relative}
+.field input{width:100%;border:1.5px solid var(--line);border-radius:12px;background:var(--bg-alt);color:var(--head);font:inherit;font-size:.95rem;padding:.8rem .9rem}
+.field input:focus{outline:none;border-color:var(--red);background:var(--surface);box-shadow:0 0 0 4px var(--tint)}
+.input-wrap input{padding-right:2.8rem}
+.reveal{position:absolute;right:.35rem;top:50%;transform:translateY(-50%);border:none;background:none;color:var(--text);padding:.5rem .6rem;cursor:pointer;font-size:.9rem}
+.plans{display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:1rem}
+.plan{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.3rem;min-height:84px;border:1.5px solid var(--line);border-radius:14px;background:var(--bg-alt);color:var(--head);cursor:pointer;padding:.8rem;text-align:center;transition:border-color .15s,background .15s,transform .15s}
+.plan:hover{border-color:rgba(var(--accent-rgb),.5);transform:translateY(-1px)}
+.plan input{position:absolute;opacity:0;pointer-events:none}
+.plan i{color:var(--red);font-size:1.05rem}
+.plan b{font-family:var(--font-head);font-size:1rem;font-weight:800}
+.plan::after{content:"\f00c";font-family:"Font Awesome 6 Free";font-weight:900;position:absolute;top:.45rem;right:.5rem;width:20px;height:20px;border-radius:50%;background:var(--red);color:#fff;font-size:.62rem;display:flex;align-items:center;justify-content:center;opacity:0;transform:scale(.5);transition:opacity .15s,transform .15s}
+.plan:has(input:checked){border-color:var(--red);border-width:2px;background:rgba(var(--accent-rgb),.12);color:var(--red);box-shadow:0 8px 22px rgba(var(--accent-rgb),.18)}
+.plan:has(input:checked)::after{opacity:1;transform:scale(1)}
+.plan:has(input:focus-visible){outline:2px solid var(--red);outline-offset:2px}
+.plan:last-child:nth-child(odd){grid-column:1/-1}
+.btn{width:100%;display:inline-flex;align-items:center;justify-content:center;gap:.5rem;border:none;border-radius:12px;font:inherit;font-weight:800;font-size:.95rem;padding:.85rem 1rem;cursor:pointer;text-decoration:none;transition:transform .15s,box-shadow .15s,opacity .15s}
+.btn-main{background:linear-gradient(135deg,var(--red),var(--red-dark));color:#fff;box-shadow:0 12px 26px rgba(var(--accent-rgb),.28)}
+.btn-main:hover:not(:disabled){transform:translateY(-1px)}
+.btn-main:disabled{opacity:.6;cursor:default}
+.btn-back{background:none;color:var(--text);font-weight:700;font-size:.85rem;padding:.6rem;margin-top:.4rem}
+.btn-back:hover{color:var(--red)}
+.msg{min-height:1.2rem;font-size:.82rem;font-weight:600;color:#e5484d;margin:-.2rem 0 .7rem}
+.who{display:flex;align-items:center;gap:.6rem;background:var(--bg-alt);border:1px solid var(--line);border-radius:12px;padding:.55rem .75rem;margin-bottom:1rem;font-size:.85rem;color:var(--head);word-break:break-all}
+.who i{color:var(--red)}
+.done-box{text-align:center;padding:.6rem 0}
+.done-icon{width:78px;height:78px;margin:0 auto 1rem;border-radius:50%;background:linear-gradient(135deg,var(--red),var(--red-dark));color:#fff;display:flex;align-items:center;justify-content:center;font-size:2rem;box-shadow:0 16px 34px rgba(var(--accent-rgb),.35);animation:pop .5s cubic-bezier(.2,1.4,.4,1)}
+@keyframes pop{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
+.done-box h2{font-size:1.45rem}
+.done-plan{display:inline-flex;align-items:center;gap:.45rem;margin:.9rem 0 1.2rem;padding:.5rem .9rem;border-radius:50px;background:var(--tint);color:var(--red);font-weight:800;font-size:.85rem}
+.progress{height:5px;border-radius:50px;background:var(--line);overflow:hidden;margin:0 0 .5rem}
+.progress span{display:block;height:100%;width:0;background:var(--red);border-radius:50px}
+.progress.go span{width:100%;transition:width 3.2s linear}
+.going{font-size:.8rem;margin-bottom:1rem}
+.closed{text-align:center}
+.closed .done-icon{background:var(--bg-alt);color:var(--text);border:1px solid var(--line);box-shadow:none;animation:none}
+.closed p{font-size:.9rem;margin:.4rem 0 1.3rem}
+.perks{list-style:none;display:flex;justify-content:center;flex-wrap:wrap;gap:.5rem 1rem;margin-top:1.3rem;font-size:.8rem}
+.perks li{display:flex;align-items:center;gap:.4rem}
+.perks i{color:var(--red)}
+footer{text-align:center;padding:1.5rem 1rem;font-size:.78rem}
+@media(max-width:420px){.card{padding:1.2rem}.plans{gap:.5rem}}
+</style>
+</head>
+<body>
+<header><div class="hd-wrap"><a href="/" class="logo-txt">{{ SITE_AI_BRAND_NAME|default:"Vidhyora" }} <span>AI</span></a></div></header>
+<main>
+{% if link_open %}
+  <span class="invite-badge"><i class="fas fa-gift"></i> You're invited</span>
+  <div class="hero">
+    <h1>Get your <span>premium</span> account</h1>
+    <p>Unlimited chats, images and more with {{ SITE_AI_BRAND_NAME|default:"Vidhyora" }} AI. It takes less than a minute.</p>
+  </div>
+  <div class="card" id="joinCard">
+    <div class="steps" aria-hidden="true"><i class="done"></i><i></i><i></i></div>
+
+    <form class="step" id="stepEmail" novalidate>
+      <h2>What's your email?</h2>
+      <p class="lead">You'll use it to log in.</p>
+      <div class="field"><label for="joinEmail">Email</label><input id="joinEmail" type="email" autocomplete="email" inputmode="email" placeholder="name@gmail.com" required></div>
+      <p class="msg" role="alert"></p>
+      <button type="submit" class="btn btn-main">Continue <i class="fas fa-arrow-right"></i></button>
+    </form>
+
+    <form class="step" id="stepPassword" novalidate hidden>
+      <h2 id="passwordTitle">Create a password</h2>
+      <p class="lead" id="passwordLead">At least {{ min_password_length }} characters.</p>
+      <div class="who"><i class="fas fa-envelope"></i><span id="whoEmail"></span></div>
+      <div class="field"><label for="joinPassword" id="passwordLabel">Password</label>
+        <div class="input-wrap"><input id="joinPassword" type="password" autocomplete="new-password" required><button type="button" class="reveal" data-reveal="joinPassword" aria-label="Show or hide the password"><i class="fas fa-eye"></i></button></div></div>
+      <div class="field" id="confirmField"><label for="joinConfirm">Type it again</label>
+        <div class="input-wrap"><input id="joinConfirm" type="password" autocomplete="new-password"><button type="button" class="reveal" data-reveal="joinConfirm" aria-label="Show or hide the password"><i class="fas fa-eye"></i></button></div></div>
+      <p class="msg" role="alert"></p>
+      <button type="submit" class="btn btn-main">Continue <i class="fas fa-arrow-right"></i></button>
+      <button type="button" class="btn btn-back" data-back="stepEmail"><i class="fas fa-arrow-left"></i> Change email</button>
+    </form>
+
+    <form class="step" id="stepPlan" novalidate hidden>
+      <h2>Which plan do you want?</h2>
+      <p class="lead">Pick how long you want premium access.</p>
+      <div class="plans" role="radiogroup" aria-label="Plan">
+        {% for plan in plans %}
+        <label class="plan"><input type="radio" name="plan" value="{{ plan.key }}"><i class="fas fa-crown"></i><b>{{ plan.label }}</b></label>
+        {% endfor %}
+      </div>
+      <p class="msg" role="alert"></p>
+      <button type="submit" class="btn btn-main" id="joinSubmit"><i class="fas fa-crown"></i> Get premium</button>
+      <button type="button" class="btn btn-back" data-back="stepPassword"><i class="fas fa-arrow-left"></i> Back</button>
+    </form>
+
+    <div class="step done-box" id="stepDone" hidden>
+      <div class="done-icon"><i class="fas fa-check"></i></div>
+      <h2 id="doneTitle">Welcome to {{ SITE_AI_BRAND_NAME|default:"Vidhyora" }} AI!</h2>
+      <div class="done-plan"><i class="fas fa-crown"></i> <span id="donePlan"></span></div>
+      <div class="progress" id="doneProgress"><span></span></div>
+      <p class="going">Taking you in…</p>
+      <a href="/" class="btn btn-main" id="doneGo">Start chatting <i class="fas fa-arrow-right"></i></a>
+    </div>
+  </div>
+  <ul class="perks"><li><i class="fas fa-bolt"></i> Instant access</li><li><i class="fas fa-lock"></i> Private to you</li><li><i class="fas fa-mobile-screen-button"></i> Works on any device</li></ul>
+{% else %}
+  <div class="card closed">
+    <div class="done-icon"><i class="fas fa-link-slash"></i></div>
+    <div class="step"><h2>This link can't be used</h2></div>
+    <p>{{ closed_message }}</p>
+    <a href="/" class="btn btn-main"><i class="fas fa-robot"></i> Go to {{ SITE_AI_BRAND_NAME|default:"Vidhyora" }} AI</a>
+  </div>
+{% endif %}
+</main>
+<footer>&copy; {% now "Y" %} {{ SITE_AI_BRAND_NAME|default:"Vidhyora" }} AI</footer>
+{% if link_open %}
+{% csrf_token %}
+<script>
+(function(){
+  var base = '{% url "join_link" token %}';
+  var minLength = {{ min_password_length }};
+  var state = { email: '', exists: false, password: '' };
+  var bars = document.querySelectorAll('.steps i');
+  var order = ['stepEmail', 'stepPassword', 'stepPlan', 'stepDone'];
+
+  function csrf(){ var el = document.querySelector('[name=csrfmiddlewaretoken]'); return el ? el.value : ''; }
+  function show(id){
+    order.forEach(function(name){ document.getElementById(name).hidden = name !== id; });
+    var at = order.indexOf(id);
+    bars.forEach(function(bar, i){ bar.classList.toggle('done', i <= at); });
+    var first = document.querySelector('#' + id + ' input:not([type=radio]), #' + id + ' input[type=radio]');
+    if (first && id !== 'stepDone') first.focus();
+  }
+  function say(form, text){ form.querySelector('.msg').textContent = text || ''; }
+  function post(url, body){
+    return fetch(url, {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRFToken': csrf() },
+      body: JSON.stringify(body)
+    }).then(function(response){
+      return response.json().catch(function(){ return {}; }).then(function(data){
+        if (!response.ok || data.status !== 'ok') throw new Error(data.detail || 'Something went wrong. Please try again.');
+        return data;
+      });
+    }, function(){ throw new Error('No internet connection. Check it and try again.'); });
+  }
+  function busy(form, on){ var b = form.querySelector('.btn-main'); if (b) b.disabled = on; }
+
+  document.querySelectorAll('[data-back]').forEach(function(button){
+    button.addEventListener('click', function(){ show(button.getAttribute('data-back')); });
+  });
+  document.querySelectorAll('[data-reveal]').forEach(function(button){
+    button.addEventListener('click', function(){
+      var field = document.getElementById(button.getAttribute('data-reveal'));
+      var reveal = field.type === 'password';
+      field.type = reveal ? 'text' : 'password';
+      button.firstElementChild.className = reveal ? 'fas fa-eye-slash' : 'fas fa-eye';
+    });
+  });
+
+  var emailForm = document.getElementById('stepEmail');
+  emailForm.addEventListener('submit', function(event){
+    event.preventDefault();
+    var email = document.getElementById('joinEmail').value.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { say(emailForm, 'Enter a valid email address, like name@gmail.com.'); return; }
+    say(emailForm, ''); busy(emailForm, true);
+    post(base + 'check/', { email: email }).then(function(data){
+      state.email = email; state.exists = data.exists;
+      document.getElementById('whoEmail').textContent = email;
+      document.getElementById('passwordTitle').textContent = data.exists ? 'Welcome back!' : 'Create a password';
+      document.getElementById('passwordLead').textContent = data.exists
+        ? 'This email already has an account. Enter its password to add premium to it.'
+        : 'At least ' + minLength + ' characters.';
+      document.getElementById('passwordLabel').textContent = data.exists ? 'Your password' : 'Password';
+      document.getElementById('joinPassword').setAttribute('autocomplete', data.exists ? 'current-password' : 'new-password');
+      document.getElementById('confirmField').hidden = data.exists;
+      document.getElementById('joinPassword').value = '';
+      document.getElementById('joinConfirm').value = '';
+      say(passwordForm, '');
+      show('stepPassword');
+    }).catch(function(error){ say(emailForm, error.message); })
+      .then(function(){ busy(emailForm, false); });
+  });
+
+  var passwordForm = document.getElementById('stepPassword');
+  passwordForm.addEventListener('submit', function(event){
+    event.preventDefault();
+    var password = document.getElementById('joinPassword').value;
+    if (!password) { say(passwordForm, 'Enter a password.'); return; }
+    if (!state.exists) {
+      if (password.length < minLength) { say(passwordForm, 'Your password needs at least ' + minLength + ' characters.'); return; }
+      if (password !== document.getElementById('joinConfirm').value) { say(passwordForm, 'The two passwords are not the same. Type them again.'); return; }
+    }
+    state.password = password;
+    say(passwordForm, '');
+    show('stepPlan');
+  });
+
+  var planForm = document.getElementById('stepPlan');
+  planForm.addEventListener('submit', function(event){
+    event.preventDefault();
+    var picked = planForm.querySelector('input[name=plan]:checked');
+    if (!picked) { say(planForm, 'Choose a plan.'); return; }
+    say(planForm, ''); busy(planForm, true);
+    post(base, { email: state.email, password: state.password, plan: picked.value }).then(function(data){
+      document.getElementById('donePlan').textContent = data.plan_label + ' premium · active until ' + data.premium_until;
+      if (!data.new_account) document.getElementById('doneTitle').textContent = 'Premium added. Welcome back!';
+      var go = document.getElementById('doneGo');
+      go.href = data.redirect || '/';
+      show('stepDone');
+      var progress = document.getElementById('doneProgress');
+      requestAnimationFrame(function(){ requestAnimationFrame(function(){ progress.classList.add('go'); }); });
+      setTimeout(function(){ window.location.href = go.href; }, 3300);
+    }).catch(function(error){
+      // A wrong password for an existing account is fixed on the previous step.
+      if (/password/i.test(error.message)) { show('stepPassword'); say(passwordForm, error.message); }
+      else say(planForm, error.message);
+      busy(planForm, false);
+    });
+  });
+})();
+</script>
+{% endif %}
+</body>
+</html>

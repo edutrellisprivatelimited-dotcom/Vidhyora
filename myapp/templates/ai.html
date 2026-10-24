@@ -483,6 +483,15 @@ header{background:var(--header-bg);backdrop-filter:blur(8px);border-bottom:1px s
 .account-field label{font-size:.72rem;font-weight:750;color:var(--head)}
 .account-field input{width:100%;border:1.5px solid var(--line);border-radius:10px;background:var(--bg-alt);color:var(--head);font:inherit;font-size:.82rem;padding:.65rem .75rem}
 .account-field input:focus{outline:none;border-color:var(--red);background:var(--surface)}
+.account-field select{width:100%;border:1.5px solid var(--line);border-radius:10px;background:var(--bg-alt);color:var(--head);font:inherit;font-size:.82rem;padding:.62rem .7rem}
+.account-field select:focus{outline:none;border-color:var(--red)}
+#joinLinkForm .account-save-btn i{margin-right:.4rem}
+.join-row-main{flex:1;min-width:0}
+.join-row-main b{font-size:.82rem;color:var(--head)}
+.join-row-main small{display:block;font-size:.7rem;color:var(--text)}
+.join-row-main .join-url{color:var(--red);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.join-status{display:inline-block;margin-left:.35rem;padding:.05rem .5rem;border-radius:50px;font-size:.64rem;font-weight:800;background:var(--line);color:var(--text);vertical-align:1px}
+.join-status.active{background:rgba(var(--accent-rgb),.14);color:var(--red)}
 .account-form-actions{display:flex;align-items:center;justify-content:flex-end;gap:.7rem;margin-top:.9rem}
 .account-save-btn,.account-plan-btn{border:none;background:linear-gradient(135deg,var(--red),var(--red-dark));color:#fff;font-family:inherit;font-size:.8rem;font-weight:700;padding:.62rem 1rem;border-radius:10px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;transition:transform .12s}
 .account-save-btn:hover:not(:disabled),.account-plan-btn:hover{transform:translateY(-1px)}
@@ -1921,7 +1930,8 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
           {% if ai_pwa_ready %}<button type="button" class="acct-menu-item" id="installAppMenuBtn" role="menuitem"><i class="fas fa-mobile-screen-button"></i> Install app</button>{% endif %}
           <button type="button" class="acct-menu-item" id="guideMenuBtn" role="menuitem"><i class="fas fa-circle-question"></i> How to use</button>
           <button type="button" class="acct-menu-item" id="supportMenuBtn" role="menuitem"><i class="fas fa-headset"></i> Support</button>
-          {% if ai_user.is_superuser %}<a class="acct-menu-item" href="{% url 'dashboard_home' %}" role="menuitem"><i class="fas fa-gauge-high"></i> Admin Panel</a>
+          {% if ai_user.is_superuser %}<button type="button" class="acct-menu-item" data-account-panel="joinlinks" role="menuitem"><i class="fas fa-link"></i> Join by link</button>
+          <a class="acct-menu-item" href="{% url 'dashboard_home' %}" role="menuitem"><i class="fas fa-gauge-high"></i> Admin Panel</a>
           <button type="button" class="acct-menu-item" id="mapsMenuBtn" role="menuitem"><i class="fas fa-map-location-dot"></i> Maps</button>{% endif %}
           <button type="button" class="acct-menu-item acct-menu-logout" id="logoutBtn" role="menuitem"><i class="fas fa-arrow-right-from-bracket"></i> Log out</button>
         </div>
@@ -2239,6 +2249,7 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
     <button type="button" class="account-tab" data-account-tab="calls" role="tab">My calls</button>
     <button type="button" class="account-tab" data-account-tab="api" role="tab">Get API</button>
     <button type="button" class="account-tab" data-account-tab="coding" role="tab">Start coding</button>
+    {% if ai_user.is_superuser %}<button type="button" class="account-tab" data-account-tab="joinlinks" role="tab">Join by link</button>{% endif %}
   </div>
   <div class="account-content">
     <div class="account-panel" data-account-content="profile">
@@ -2412,6 +2423,30 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
     <div class="account-panel" data-account-content="calls" hidden><div class="account-loading">Loading calls…</div></div>
     <div class="account-panel" data-account-content="api" hidden><div class="account-loading">Loading…</div></div>
     <div class="account-panel" data-account-content="coding" hidden><div class="account-loading">Loading…</div></div>
+    {% if ai_user.is_superuser %}
+    <div class="account-panel" data-account-content="joinlinks" hidden>
+      <p class="calls-note">Make a link and send it to someone. They enter their email, set a password and pick a plan, and get premium straight away. Everyone who joined is listed in Admin Panel → Joined by Link.</p>
+      <form id="joinLinkForm">
+        <div class="account-form-grid">
+          <div class="account-field full"><label for="joinLinkLabel">Note (optional)</label><input id="joinLinkLabel" maxlength="80" placeholder="e.g. For Rahul's class" autocomplete="off"></div>
+          <div class="account-field"><label for="joinLinkUses">Who can join</label>
+            <select id="joinLinkUses">
+              <option value="">Anyone with the link</option>
+              <option value="1">Only 1 person</option>
+              <option value="5">Up to 5 people</option>
+              <option value="10">Up to 10 people</option>
+              <option value="25">Up to 25 people</option>
+              <option value="50">Up to 50 people</option>
+            </select></div>
+          <div class="account-field"><label for="joinLinkExpiry">Expires on (optional)</label><input id="joinLinkExpiry" type="date"></div>
+        </div>
+        <div class="account-form-actions"><span class="account-message" id="joinLinkMessage" aria-live="polite"></span><button type="submit" class="account-save-btn"><i class="fas fa-link"></i> Generate link</button></div>
+      </form>
+      <hr class="account-divider">
+      <h3 class="account-section-title">Your links</h3>
+      <div id="joinLinkList"><div class="account-loading">Loading…</div></div>
+    </div>
+    {% endif %}
   </div>
 </section>
 {% endif %}
@@ -7347,6 +7382,111 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
     accountModal.querySelectorAll('[data-account-content]').forEach(function(content){
       content.hidden = content.getAttribute('data-account-content') !== panel;
     });
+    showActiveAccountTab();
+    if (panel === 'joinlinks') loadJoinLinks();
+  }
+
+  // The tab row scrolls sideways; keep the chosen tab (e.g. "Join by link",
+  // last in the row) in view. Does nothing while the modal is still hidden,
+  // so openAccountModal calls it again once it is shown.
+  function showActiveAccountTab(){
+    var activeTab = accountModal && accountModal.querySelector('[data-account-tab].active');
+    if (activeTab && activeTab.scrollIntoView) activeTab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
+  // ---- Join by link (superusers only; see myapp/join_links.py) ----
+  var joinLinkList = document.getElementById('joinLinkList');
+  var joinLinkForm = document.getElementById('joinLinkForm');
+  function joinLinkRequest(url, body){
+    var options = { credentials: 'same-origin', headers: { 'Accept': 'application/json' } };
+    if (body) {
+      options.method = 'POST';
+      options.headers['Content-Type'] = 'application/json';
+      options.headers['X-CSRFToken'] = csrfToken();
+      options.body = JSON.stringify(body);
+    }
+    return fetch(url, options).then(function(response){
+      return response.json().catch(function(){ return {}; }).then(function(data){
+        if (!response.ok) throw new Error(accountErrorMessage(data, 'Something went wrong. Please try again.'));
+        return data;
+      });
+    });
+  }
+  function joinLinkDate(value){
+    var when = new Date(value);
+    return isNaN(when) ? '' : when.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+  function renderJoinLinks(links){
+    if (!joinLinkList) return;
+    if (!links.length) {
+      joinLinkList.innerHTML = '<div class="account-empty"><i class="fas fa-link"></i><br><br>No links yet. Make one above and send it to someone.</div>';
+      return;
+    }
+    joinLinkList.innerHTML = '<div class="calls-list">' + links.map(function(link){
+      var bits = ['Made ' + joinLinkDate(link.created_at)];
+      bits.push(link.expires_at ? 'Expires ' + joinLinkDate(link.expires_at) : 'Never expires');
+      bits.push(link.max_uses ? link.used + ' of ' + link.max_uses + ' joined' : link.used + ' joined');
+      var share = 'https://wa.me/?text=' + encodeURIComponent('Get your premium account here: ' + link.url);
+      return '<div class="call-row" data-join-id="' + link.id + '" data-join-url="' + escHtml(link.url) + '">' +
+        '<span class="call-row-icon"><i class="fas fa-link"></i></span>' +
+        '<div class="join-row-main"><b>' + escHtml(link.label || 'Join link') + '</b>' +
+          '<span class="join-status ' + escHtml(link.status) + '">' + escHtml(link.status_label) + '</span>' +
+          '<small class="join-url">' + escHtml(link.url) + '</small>' +
+          '<small>' + escHtml(bits.join(' · ')) + '</small></div>' +
+        '<button type="button" class="call-icon-btn" data-join-copy title="Copy link"><i class="fas fa-copy"></i></button>' +
+        '<a class="call-icon-btn" href="' + escHtml(share) + '" target="_blank" rel="noopener" title="Send on WhatsApp"><i class="fab fa-whatsapp"></i></a>' +
+        '<button type="button" class="call-icon-btn danger" data-join-remove title="Remove link"><i class="fas fa-trash"></i></button>' +
+      '</div>';
+    }).join('') + '</div>';
+  }
+  function loadJoinLinks(){
+    if (!joinLinkList) return;
+    var expiry = document.getElementById('joinLinkExpiry');
+    if (expiry) {
+      var today = new Date();
+      expiry.min = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+    }
+    joinLinkRequest('/AI/api/join-links/').then(function(data){ renderJoinLinks(data.links || []); })
+      .catch(function(error){ joinLinkList.innerHTML = '<div class="account-empty">' + escHtml(error.message) + '</div>'; });
+  }
+  if (joinLinkForm) {
+    joinLinkForm.addEventListener('submit', function(event){
+      event.preventDefault();
+      var message = document.getElementById('joinLinkMessage');
+      var button = joinLinkForm.querySelector('button[type=submit]');
+      message.textContent = '';
+      button.disabled = true;
+      joinLinkRequest('/AI/api/join-links/', {
+        label: document.getElementById('joinLinkLabel').value,
+        max_uses: document.getElementById('joinLinkUses').value,
+        expires_on: document.getElementById('joinLinkExpiry').value
+      }).then(function(data){
+        joinLinkForm.reset();
+        copyText(data.link.url).then(function(){ message.textContent = 'Link made and copied. Paste it to send.'; },
+          function(){ message.textContent = 'Link made. Use the copy button to copy it.'; });
+        loadJoinLinks();
+      }).catch(function(error){ message.textContent = error.message; })
+        .then(function(){ button.disabled = false; });
+    });
+  }
+  if (joinLinkList) {
+    joinLinkList.addEventListener('click', function(event){
+      var row = event.target.closest('[data-join-id]');
+      if (!row) return;
+      var copyBtn = event.target.closest('[data-join-copy]');
+      if (copyBtn) {
+        copyText(row.getAttribute('data-join-url')).then(function(){
+          copyBtn.innerHTML = '<i class="fas fa-check"></i>';
+          setTimeout(function(){ copyBtn.innerHTML = '<i class="fas fa-copy"></i>'; }, 1500);
+        }, function(){ window.prompt('Copy this link:', row.getAttribute('data-join-url')); });
+        return;
+      }
+      if (event.target.closest('[data-join-remove]')) {
+        if (!confirm('Remove this link? It stops working right away. People who already joined keep their premium.')) return;
+        joinLinkRequest('/AI/api/join-links/' + row.getAttribute('data-join-id') + '/remove/', {})
+          .then(loadJoinLinks, function(error){ alert(error.message); });
+      }
+    });
   }
 
   function populateAccountUser(user){
@@ -8079,6 +8219,7 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
     selectAccountPanel(panel || 'profile');
     accountModal.hidden = false;
     accountModalBackdrop.hidden = false;
+    showActiveAccountTab();
     if (accountMenuWrap) accountMenuWrap.classList.remove('open');
     if (accountMenuBtn) accountMenuBtn.setAttribute('aria-expanded', 'false');
     loadAccountData();

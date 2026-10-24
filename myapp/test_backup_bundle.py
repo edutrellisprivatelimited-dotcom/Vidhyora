@@ -8,7 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from django.test import SimpleTestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from myapp import dropbox_backup as backup
 
 
@@ -278,3 +278,72 @@ class AutomaticBackupTests(SimpleTestCase):
         with patch.object(backup.threading, 'Thread') as thread:
             self.assertFalse(backup.start_scheduler())
         thread.assert_not_called()
+
+
+class BackupPageActionTests(TestCase):
+    """Restore, Delete and Download on the Backup & Restore page."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.staff = User.objects.create_superuser('boss@example.com', 'boss@example.com', 'pw')
+        self.client.force_login(self.staff)
+        folder = tempfile.mkdtemp()
+        self.status_file = Path(folder) / 'status.json'
+        patcher = patch.object(backup, 'STATUS_FILE', self.status_file)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    @patch('myapp.views.call_command')
+    @patch('myapp.views.dropbox_backup.restore_backup')
+    def test_restoring_a_backup_made_during_this_login_works_and_keeps_you_logged_in(self, restore, migrate):
+        # The test login's session row already exists, just as it does in a
+        # backup taken during the same login, so creating it again fails.
+        response = self.client.post('/store/dashboard/backup/restore/', {'filename': 'backup_x.zip'}, follow=True)
+        self.assertContains(response, 'Database restored from')
+        self.assertNotContains(response, 'could not be updated')
+        self.assertEqual(int(self.client.session['_auth_user_id']), self.staff.pk)
+
+    @patch('myapp.views.call_command', side_effect=RuntimeError('table already exists'))
+    @patch('myapp.views.dropbox_backup.restore_backup')
+    def test_a_failed_upgrade_says_what_went_wrong(self, restore, migrate):
+        response = self.client.post('/store/dashboard/backup/restore/', {'filename': 'backup_x.zip'}, follow=True)
+        self.assertContains(response, 'RuntimeError: table already exists')
+
+    @patch('myapp.views.dropbox_backup.restore_backup')
+    def test_no_restore_while_a_backup_is_running(self, restore):
+        import time as _time
+        self.status_file.write_text(json.dumps({'state': 'running', 'started': _time.time(), 'message': 'Packing'}))
+        response = self.client.post('/store/dashboard/backup/restore/', {'filename': 'backup_x.zip'}, follow=True)
+        self.assertContains(response, 'A backup is running right now')
+        restore.assert_not_called()
+
+    def test_backup_now_explains_when_the_automatic_backup_is_busy(self):
+        import time as _time
+        self.status_file.write_text(json.dumps({'state': 'running', 'started': _time.time(), 'message': 'Packing', 'automatic': True}))
+        with patch('myapp.models.DropboxSettings.is_configured', True):
+            response = self.client.post('/store/dashboard/backup/run/', follow=True)
+        self.assertContains(response, 'automatic daily backup is running right now')
+
+    def test_deleting_one_backup(self):
+        dbx = Mock()
+        with patch.object(backup, '_client', return_value=dbx):
+            response = self.client.post('/store/dashboard/backup/delete/', {'filename': 'backup_1.zip'}, follow=True)
+            self.client.post('/store/dashboard/backup/delete/', {'filename': '../secret.zip'})
+        dbx.files_delete_v2.assert_called_once_with(f'{backup.BACKUP_FOLDER}/backup_1.zip')
+        self.assertContains(response, 'Deleted')
+
+    def test_download_goes_straight_to_dropbox_or_gives_just_the_database(self):
+        database = b'SQLite format 3\x00' + b'rest'
+        bundle = io.BytesIO()
+        with zipfile.ZipFile(bundle, 'w') as archive:
+            archive.writestr('db.sqlite3', database)
+            archive.writestr('media/pwa/icon.png', b'icon')
+        dbx = Mock()
+        dbx.files_get_temporary_link.return_value = SimpleNamespace(link='https://dl.dropboxusercontent.com/x')
+        dbx.files_download.return_value = (None, SimpleNamespace(content=bundle.getvalue()))
+        with patch.object(backup, '_client', return_value=dbx):
+            direct = self.client.get('/store/dashboard/backup/download/', {'filename': 'backup_1.zip'})
+            only_db = self.client.get('/store/dashboard/backup/download/', {'filename': 'backup_1.zip', 'part': 'db'})
+        self.assertRedirects(direct, 'https://dl.dropboxusercontent.com/x', fetch_redirect_response=False)
+        self.assertEqual(only_db.content, database)
+        self.assertIn('backup_1.sqlite3', only_db['Content-Disposition'])

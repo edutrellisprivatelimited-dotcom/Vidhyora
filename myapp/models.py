@@ -1513,3 +1513,63 @@ class SupportProfile(models.Model):
 
     def __str__(self):
         return self.display_name
+
+
+def _new_join_token():
+    return secrets.token_urlsafe(12)
+
+
+class JoinLink(models.Model):
+    """An invite link a superuser makes from the AI page's "Join by link" tab.
+    Whoever opens /join/<token>/ creates an account (or signs in to theirs),
+    picks a premium plan, and is let straight into the AI — see
+    myapp.join_links. Removing a link only stamps removed_at, so the admin
+    panel's "Joined by Link" page keeps its history."""
+    token = models.CharField(max_length=32, unique=True, default=_new_join_token)
+    label = models.CharField(max_length=80, blank=True, help_text='Optional note, e.g. who the link is for.')
+    max_uses = models.PositiveIntegerField(null=True, blank=True, help_text='How many people can join with it. Blank = no limit.')
+    expires_at = models.DateTimeField(null=True, blank=True, help_text='Stops working after this time. Blank = never.')
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+    removed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at', '-pk']
+        verbose_name = 'Join Link'
+        verbose_name_plural = 'Join Links'
+
+    def __str__(self):
+        return self.label or self.token
+
+    def status(self, used=None):
+        """'active', 'removed', 'expired' or 'full'. Pass the join count when
+        it is already known to save a query."""
+        if self.removed_at:
+            return 'removed'
+        if self.expires_at and self.expires_at <= timezone.now():
+            return 'expired'
+        if self.max_uses is not None:
+            used = self.signups.count() if used is None else used
+            if used >= self.max_uses:
+                return 'full'
+        return 'active'
+
+
+class JoinLinkSignup(models.Model):
+    """One person who joined through a JoinLink, and the plan they picked."""
+    link = models.ForeignKey(JoinLink, on_delete=models.CASCADE, related_name='signups')
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='join_link_signups')
+    email = models.EmailField(help_text='Kept even if the account is deleted later.')
+    plan = models.CharField(max_length=10)
+    plan_days = models.PositiveIntegerField()
+    new_account = models.BooleanField(default=True, help_text='False when an existing account joined.')
+    premium_until = models.DateTimeField()
+    joined_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-joined_at', '-pk']
+        verbose_name = 'Join Link Signup'
+        verbose_name_plural = 'Join Link Signups'
+
+    def __str__(self):
+        return f'{self.email} via {self.link}'

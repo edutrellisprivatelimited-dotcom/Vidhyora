@@ -83,6 +83,15 @@ a.btn[aria-disabled="true"]{opacity:.5;pointer-events:none}
 .auto-backup-head i{color:#3b5bdb}
 .auto-backup p{margin:0 0 .6rem}
 .auto-backup p b{color:var(--head)}
+.bk-path{display:block;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.7rem;color:#9aa3b0;margin-top:.15rem;word-break:break-all}
+.bk-tag{display:inline-block;font-size:.66rem;font-weight:800;padding:.08rem .5rem;border-radius:50px;background:#eaf1ff;color:#2b3fa8;vertical-align:1px}
+.bk-actions{display:flex;flex-wrap:wrap;gap:.35rem}
+.bk-actions form{display:inline}
+.bk-btn{display:inline-flex;align-items:center;gap:.35rem;border:1.5px solid var(--line);background:#fff;color:var(--head);border-radius:9px;padding:.35rem .7rem;font:inherit;font-size:.74rem;font-weight:700;cursor:pointer;white-space:nowrap;text-decoration:none}
+.bk-btn:hover{border-color:#3b5bdb;color:#3b5bdb}
+.bk-btn.danger{color:#dc2626;border-color:#f3b7bf}
+.bk-btn.danger:hover{background:#dc2626;color:#fff;border-color:#dc2626}
+.bk-when{white-space:nowrap}
 </style>
 {% endblock %}
 
@@ -239,7 +248,7 @@ document.querySelectorAll('[data-reveal]').forEach(function(button){
       <form method="post" action="{% url 'dashboard_backup_run' %}">
         {% csrf_token %}
         {% if backup_running %}
-        <div class="backup-progress" role="status" id="backupProgress"><i class="fas fa-spinner fa-spin"></i> <span>Backup running — {{ backup_running.message }}</span></div>
+        <div class="backup-progress" role="status" id="backupProgress"><i class="fas fa-spinner fa-spin"></i> <span>{% if backup_running.automatic %}Automatic daily backup running{% else %}Backup running{% endif %} — {{ backup_running.message }}</span></div>
         {% endif %}
         <button type="submit" class="btn btn-blue btn-block" {% if not settings_obj.is_configured or not dropbox_installed or backup_running %}disabled{% endif %}>
           <i class="fas fa-cloud-arrow-up"></i> {% if backup_running %}Backup in progress…{% else %}Backup Now{% endif %}
@@ -289,15 +298,27 @@ document.querySelectorAll('[data-reveal]').forEach(function(button){
         {% for f in backups %}
         <tr>
           <td>{{ forloop.counter }}</td>
-          <td>{{ f.name }}</td>
-          <td>{{ f.client_modified|date:"Y-m-d" }}</td>
-          <td>{{ f.client_modified|date:"h:i:s A" }}</td>
           <td>
-            <form method="post" action="{% url 'dashboard_backup_restore' %}" onsubmit="return confirm('This will permanently overwrite the live database with {{ f.name }}. This cannot be undone. Continue?');" style="display:inline">
+            {{ f.name }}{% if f.automatic %} <span class="bk-tag">Automatic</span>{% endif %}
+            <span class="bk-path" title="Where this file is in your Dropbox">Dropbox: {{ backup_folder }}/{{ f.name }}</span>
+          </td>
+          <td class="bk-when">{{ f.client_modified|date:"Y-m-d" }}</td>
+          <td class="bk-when">{{ f.client_modified|date:"h:i:s A" }}</td>
+          <td>
+            <div class="bk-actions">
+            <form method="post" action="{% url 'dashboard_backup_restore' %}" onsubmit="return confirm('This will permanently overwrite the live database with {{ f.name|escapejs }}. This cannot be undone. Continue?');">
               {% csrf_token %}
               <input type="hidden" name="filename" value="{{ f.name }}">
-              <button type="submit" class="btn btn-ghost" style="padding:.4rem .9rem;font-size:.78rem"><i class="fas fa-rotate-left"></i> Restore</button>
+              <button type="submit" class="bk-btn"><i class="fas fa-rotate-left"></i> Restore</button>
             </form>
+            <a class="bk-btn" href="{% url 'dashboard_backup_download' %}?filename={{ f.name|urlencode }}" title="Download this backup file straight from Dropbox"><i class="fas fa-download"></i> Download</a>
+            <a class="bk-btn" href="{% url 'dashboard_backup_download' %}?filename={{ f.name|urlencode }}&amp;part=db" title="Download only the database, as a .sqlite3 file"><i class="fas fa-database"></i> Database only</a>
+            <form method="post" action="{% url 'dashboard_backup_delete' %}" onsubmit="return confirm('Delete {{ f.name|escapejs }} from Dropbox? This cannot be undone.');">
+              {% csrf_token %}
+              <input type="hidden" name="filename" value="{{ f.name }}">
+              <button type="submit" class="bk-btn danger"><i class="fas fa-trash"></i> Delete</button>
+            </form>
+            </div>
           </td>
         </tr>
         {% empty %}

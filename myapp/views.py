@@ -30,6 +30,7 @@ from django.template.loader import render_to_string
 from django.urls import resolve, Resolver404, reverse
 from django.templatetags.static import static as static_url
 from django.http import JsonResponse, StreamingHttpResponse, FileResponse, HttpResponse
+from django.contrib.sessions.backends.base import CreateError
 from django.core.files.base import ContentFile
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
@@ -2369,7 +2370,8 @@ def dashboard_backup(request):
                 # timezone-*aware* values to the local (IST) timezone, so left
                 # naive this rendered as raw UTC clock time mislabeled as local.
                 backups = [
-                    {'name': name, 'client_modified': timezone.localtime(modified.replace(tzinfo=dt_timezone.utc))}
+                    {'name': name, 'client_modified': timezone.localtime(modified.replace(tzinfo=dt_timezone.utc)),
+                     'automatic': name.startswith(dropbox_backup.AUTO_PREFIX)}
                     for name, modified in dropbox_backup.list_backup_entries(settings_obj)
                 ]
             except dropbox_backup.BackupError as exc:
@@ -2503,9 +2505,44 @@ def dashboard_backup_run(request):
             messages.error(request, 'Connect Dropbox first, then start the backup.')
         elif dropbox_backup.start_backup_job(settings_obj):
             messages.info(request, 'The backup has started. You can leave this page — it keeps running and the result shows here when it is done.')
+        elif (dropbox_backup.job_status() or {}).get('automatic'):
+            messages.info(request, 'The automatic daily backup is running right now, so a second one was not started. '
+                                   'Its progress is shown below. When it finishes you can press Backup Now again, or cancel it to start yours now.')
         else:
             messages.info(request, 'A backup is already running. Its progress is shown on this page.')
     return redirect('dashboard_backup')
+
+
+@dashboard_staff_required
+def dashboard_backup_delete(request):
+    """Delete one backup from Dropbox (the Delete button in Backup History)."""
+    if request.method == 'POST':
+        filename = request.POST.get('filename', '').strip()
+        try:
+            dropbox_backup.delete_backup(DropboxSettings.get_solo(), filename)
+            messages.success(request, f'Deleted "{filename}" from Dropbox.')
+        except dropbox_backup.BackupError as exc:
+            messages.error(request, str(exc))
+    return redirect('dashboard_backup')
+
+
+@dashboard_staff_required
+def dashboard_backup_download(request):
+    """?filename=…        the backup file itself, straight from Dropbox
+    ?filename=…&part=db   only its database, as a .sqlite3 file"""
+    filename = request.GET.get('filename', '').strip()
+    settings_obj = DropboxSettings.get_solo()
+    try:
+        if request.GET.get('part') == 'db':
+            content = dropbox_backup.database_file(settings_obj, filename)
+            stem = filename.rsplit('.', 1)[0].replace('"', '')
+            response = HttpResponse(content, content_type='application/vnd.sqlite3')
+            response['Content-Disposition'] = f'attachment; filename="{stem}.sqlite3"'
+            return response
+        return redirect(dropbox_backup.download_link(settings_obj, filename))
+    except dropbox_backup.BackupError as exc:
+        messages.error(request, str(exc))
+        return redirect('dashboard_backup')
 
 
 @dashboard_staff_required
@@ -2523,34 +2560,48 @@ def dashboard_backup_restore(request):
     if request.method == 'POST':
         settings_obj = DropboxSettings.get_solo()
         filename = request.POST.get('filename', '').strip()
+        running = dropbox_backup.job_status()
         if not filename:
             messages.error(request, 'Choose a backup to restore first.')
+        elif running and running.get('state') == 'running':
+            messages.error(request, 'A backup is running right now. Wait for it to finish (or cancel it), then restore.')
         else:
             try:
                 dropbox_backup.restore_backup(settings_obj, filename)
+            except dropbox_backup.BackupError as exc:
+                messages.error(request, str(exc))
+                return redirect('dashboard_backup')
+            try:
                 # Backups may have been created before newer application
                 # migrations existed. Upgrade the restored schema before
                 # redirecting to any page that imports the current models.
                 call_command('migrate', interactive=False, verbosity=0)
-                # restore_backup just swapped out db.sqlite3 from under this
-                # very request, taking the django_session table — and this
-                # request's own session row — with it. Without recreating it,
-                # SessionMiddleware's save() at the end of the request can't
-                # find the row to UPDATE and raises SessionInterrupted.
-                # must_create=True forces an INSERT into the freshly-restored
-                # table instead, so the admin doesn't get logged out or hit
-                # an error page by restoring a backup.
-                request.session.save(must_create=True)
-                messages.success(request, f'Database restored from "{filename}" and upgraded to the current schema.')
-            except dropbox_backup.BackupError as exc:
-                messages.error(request, str(exc))
-            except Exception:
+            except Exception as exc:
                 logger.exception('Restored database could not be migrated to the current schema')
                 messages.error(
                     request,
-                    'The database was restored, but its schema could not be upgraded. Run migrations before using the site.',
+                    f'The database was restored, but it could not be updated for this version of the site '
+                    f'({exc.__class__.__name__}: {str(exc)[:200]}). Run migrations before using the site.',
                 )
+            else:
+                messages.success(request, f'Database restored from "{filename}" and upgraded to the current schema.')
+            _keep_session_after_restore(request)
     return redirect('dashboard_backup')
+
+
+def _keep_session_after_restore(request):
+    """restore_backup just swapped db.sqlite3 out from under this request.
+    If the backup was made before this login, the restored django_session
+    table has no row for this session, and SessionMiddleware's save at the
+    end of the request would find nothing to UPDATE (SessionInterrupted), so
+    the row is created. If the backup was made during this same login (the
+    usual case: back up, then restore), the row is already there and
+    creating it fails, so it is updated instead. Either way the admin stays
+    logged in."""
+    try:
+        request.session.save(must_create=True)
+    except CreateError:
+        request.session.save()
 
 
 @dashboard_staff_required
