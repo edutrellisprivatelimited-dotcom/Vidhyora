@@ -77,6 +77,12 @@
 .dbx-steps a{color:#3b5bdb;font-weight:700}
 .dbx-hint{display:block;font-weight:600;font-size:.72rem;color:#9aa3b0;margin-top:.3rem}
 a.btn[aria-disabled="true"]{opacity:.5;pointer-events:none}
+.auto-backup{background:#f3f6ff;border:1px solid #d7e0ff;border-radius:12px;padding:.9rem 1rem;margin-bottom:1.1rem;font-size:.82rem;color:var(--text);line-height:1.5}
+.auto-backup-head{display:flex;justify-content:space-between;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:.4rem}
+.auto-backup-head b{color:var(--head);font-size:.86rem}
+.auto-backup-head i{color:#3b5bdb}
+.auto-backup p{margin:0 0 .6rem}
+.auto-backup p b{color:var(--head)}
 </style>
 {% endblock %}
 
@@ -205,8 +211,31 @@ document.querySelectorAll('[data-reveal]').forEach(function(button){
       <ul class="backup-facts">
         <li><i class="fas fa-folder"></i> Saves a timestamped copy to <code>{{ backup_folder }}/</code></li>
         <li><i class="fas fa-file-circle-check"></i> Includes the PWA install icon, favicon, social preview, and other uploaded site images in one ZIP. Uploads once and updates <code>latest.json</code>.</li>
-        <li><i class="fas fa-shield-halved"></i> Old backups are kept — nothing is deleted automatically</li>
+        <li><i class="fas fa-shield-halved"></i> Backups made with "Backup Now" are kept until you delete them</li>
       </ul>
+      <div class="auto-backup">
+        <div class="auto-backup-head">
+          <b><i class="fas fa-clock-rotate-left"></i> Automatic backup every {{ auto_backup_hours }} hours</b>
+          {% if settings_obj.auto_backup_enabled %}<span class="dbx-badge ok"><i class="fas fa-circle-check"></i> On</span>{% else %}<span class="dbx-badge idle"><i class="fas fa-circle-pause"></i> Off</span>{% endif %}
+        </div>
+        <p>Each automatic backup replaces the previous one, so your Dropbox doesn't fill up. The old one is removed only after the new one is safely saved.</p>
+        {% if settings_obj.auto_backup_enabled %}
+          {% if not settings_obj.is_configured or not dropbox_installed %}
+          <p><b>Waiting for Dropbox.</b> Automatic backups start once Dropbox is connected above.</p>
+          {% else %}
+          <p>Last automatic backup: <b>{% if last_auto_backup %}{{ last_auto_backup|date:"d M Y, h:i A" }}{% else %}none yet{% endif %}</b><br>
+             Next: <b>{% if next_auto_backup %}around {{ next_auto_backup|date:"d M Y, h:i A" }}{% else %}due now, it starts by itself shortly{% endif %}</b></p>
+          {% endif %}
+        {% endif %}
+        <form method="post" action="{% url 'dashboard_backup_settings' %}">
+          {% csrf_token %}
+          {% if settings_obj.auto_backup_enabled %}
+          <button type="submit" name="action" value="auto_off" class="btn btn-ghost"><i class="fas fa-pause"></i> Turn off automatic backup</button>
+          {% else %}
+          <button type="submit" name="action" value="auto_on" class="btn btn-blue"><i class="fas fa-play"></i> Turn on automatic backup</button>
+          {% endif %}
+        </form>
+      </div>
       <form method="post" action="{% url 'dashboard_backup_run' %}">
         {% csrf_token %}
         {% if backup_running %}

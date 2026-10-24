@@ -30,6 +30,9 @@ BACKUP_ROOT = '/EduTrellis Store'
 BACKUP_FOLDER = f'{BACKUP_ROOT}/backups'
 LATEST_NAME = 'db_latest.sqlite3'
 LATEST_BUNDLE_NAME = 'backup_latest.zip'
+# Automatic backups are named apart from "Backup Now" ones so each new
+# automatic backup can replace the previous one without touching those.
+AUTO_PREFIX = 'auto_backup_'
 logger = logging.getLogger(__name__)
 
 
@@ -310,8 +313,11 @@ def _upload_file(dbx, file_path, remote_path, mode, progress=None):
         return attempt(lambda: dbx.files_upload_session_finish(last, cursor, commit))
 
 
-def create_backup(settings_obj, *, missing_images=None, progress=None):
-    """Upload a database-and-images ZIP and refresh the latest copies."""
+def create_backup(settings_obj, *, missing_images=None, progress=None, automatic=False):
+    """Upload a database-and-images ZIP and refresh the latest copies.
+
+    An automatic backup replaces the previous automatic one, but only once the
+    new one is safely uploaded, so Dropbox never ends up without a copy."""
     started = time.monotonic()
     say = progress or (lambda text: None)
     try:
@@ -345,7 +351,7 @@ def create_backup(settings_obj, *, missing_images=None, progress=None):
                 archive.writestr('backup_manifest.json', json.dumps({'version': 1, 'missing_images': skipped}))
 
             stamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')
-            filename = f'backup_{stamp}.zip'
+            filename = f'{AUTO_PREFIX if automatic else "backup_"}{stamp}.zip'
             size = bundle_path.stat().st_size
             logger.info('Dropbox archive ready: %d bytes; starting upload', size)
             say(f'Uploading to Dropbox: 0 of {size // (1024 * 1024)} MB')
@@ -357,6 +363,14 @@ def create_backup(settings_obj, *, missing_images=None, progress=None):
                              f'{BACKUP_FOLDER}/latest.json', mode=dropbox.files.WriteMode.overwrite)
         except Exception:
             logger.warning('Backup saved, but latest pointer could not be updated', exc_info=True)
+        if automatic:
+            say('Removing the previous automatic backup…')
+            try:
+                for entry in _folder_entries(dbx):
+                    if entry.name.startswith(AUTO_PREFIX) and entry.name != filename:
+                        dbx.files_delete_v2(f'{BACKUP_FOLDER}/{entry.name}')
+            except Exception:
+                logger.warning('Automatic backup saved, but an older one could not be removed', exc_info=True)
         forget_listing(settings_obj)
         logger.info('Dropbox backup saved: bytes=%d elapsed=%.1fs missing=%d',
                     size, time.monotonic() - started, len(skipped))
@@ -419,14 +433,16 @@ def cancel_backup_job():
         return True
 
 
-def start_backup_job(settings_obj):
+def start_backup_job(settings_obj, *, automatic=False):
     """Start a backup in the background. False when one is already running."""
     with _job_lock:
         status = job_status()
         if status and status.get('state') == 'running':
             return False
         job = f'{time.time():.6f}'
-        _write_status(state='running', job=job, started=time.time(), message='Starting…', seen=False, filename='', skipped=[])
+        _write_status(state='running', job=job, started=time.time(), message='Starting…', seen=False,
+                      filename='', skipped=[], automatic=automatic)
+    kind = 'Automatic backup' if automatic else 'Backup'
 
     def still_mine():
         current = job_status() or {}
@@ -445,15 +461,16 @@ def start_backup_job(settings_obj):
     def run():
         try:
             skipped = []
-            filename = create_backup(settings_obj, missing_images=skipped, progress=progress)
-            finish(state='done', message=f'Backup saved to Dropbox as "{filename}".', filename=filename, skipped=skipped[:20])
+            filename = create_backup(settings_obj, missing_images=skipped, progress=progress, automatic=automatic)
+            replaced = ' It replaced the previous automatic backup.' if automatic else ''
+            finish(state='done', message=f'{kind} saved to Dropbox as "{filename}".{replaced}', filename=filename, skipped=skipped[:20])
         except BackupCancelled:
             logger.info('Dropbox backup cancelled by the admin')
         except BackupError as exc:
-            finish(state='error', message=str(exc))
+            finish(state='error', message=f'The automatic backup failed. {exc}' if automatic else str(exc))
         except Exception as exc:
             logger.exception('Background Dropbox backup failed')
-            finish(state='error', message=f'The backup failed unexpectedly ({exc.__class__.__name__}). Please try again.')
+            finish(state='error', message=f'The {kind.lower()} failed unexpectedly ({exc.__class__.__name__}). Please try again.')
         finally:
             from django.db import connection
             connection.close()
@@ -489,24 +506,28 @@ def list_backup_entries(settings_obj, *, refresh=False):
     return entries
 
 
+def _folder_entries(dbx):
+    """Everything inside the backup folder; empty when it doesn't exist yet."""
+    try:
+        res = dbx.files_list_folder(BACKUP_FOLDER)
+    except Exception as exc:
+        if 'not_found' in str(exc).lower():
+            return []
+        raise
+    entries = list(res.entries)
+    while res.has_more:
+        res = dbx.files_list_folder_continue(res.cursor)
+        entries.extend(res.entries)
+    return entries
+
+
 def list_backups(settings_obj):
     """Returns timestamped backup files (newest first), excluding db_latest.sqlite3."""
     try:
         dbx = _client(settings_obj)
-        try:
-            res = dbx.files_list_folder(BACKUP_FOLDER)
-        except Exception as exc:
-            if 'not_found' in str(exc).lower():
-                return []
-            raise
-
-        entries = list(res.entries)
-        while res.has_more:
-            res = dbx.files_list_folder_continue(res.cursor)
-            entries.extend(res.entries)
-
-        files = [e for e in entries if isinstance(e, dropbox.files.FileMetadata) and e.name not in (LATEST_NAME, LATEST_BUNDLE_NAME) and e.name.endswith(('.sqlite3', '.zip'))]
-        files.sort(key=lambda e: e.name, reverse=True)
+        files = [e for e in _folder_entries(dbx) if isinstance(e, dropbox.files.FileMetadata) and e.name not in (LATEST_NAME, LATEST_BUNDLE_NAME) and e.name.endswith(('.sqlite3', '.zip'))]
+        # By upload time, since automatic and manual backups are named differently.
+        files.sort(key=lambda e: (e.client_modified, e.name), reverse=True)
         return files
     except BackupError:
         raise
@@ -523,18 +544,7 @@ def delete_all_backups(settings_obj):
     """
     try:
         dbx = _client(settings_obj)
-        try:
-            res = dbx.files_list_folder(BACKUP_FOLDER)
-        except Exception as exc:
-            if 'not_found' in str(exc).lower():
-                return 0
-            raise
-
-        entries = list(res.entries)
-        while res.has_more:
-            res = dbx.files_list_folder_continue(res.cursor)
-            entries.extend(res.entries)
-
+        entries = _folder_entries(dbx)
         folder_prefix = BACKUP_FOLDER.lower().rstrip('/') + '/'
         deleted = 0
         for entry in entries:
@@ -613,3 +623,72 @@ def restore_backup(settings_obj, filename):
         raise BackupError(
             f'Could not write the restored database (it may be locked by the running server): {exc}'
         )
+
+
+# ---- automatic backup every 24 hours ----------------------------------------
+# A timer thread in the web process checks every half hour whether the newest
+# automatic backup on Dropbox is a day old, and starts one if so. Going by
+# what Dropbox holds, rather than a time remembered here, keeps the schedule
+# right across server restarts and database restores.
+AUTO_BACKUP_HOURS = 24
+AUTO_CHECK_SECONDS = 30 * 60
+AUTO_FIRST_CHECK_SECONDS = 2 * 60
+# After an automatic backup fails, wait this long before trying again rather
+# than re-uploading the whole site every half hour.
+AUTO_RETRY_SECONDS = 3 * 60 * 60
+_scheduler_lock = threading.Lock()
+_scheduler_started = False
+_last_auto_attempt = 0.0
+
+
+def last_automatic_backup(entries):
+    """When the newest automatic backup in a [(name, modified)] listing was
+    uploaded, in the same form the listing uses, or None."""
+    return max((modified for name, modified in entries if name.startswith(AUTO_PREFIX)), default=None)
+
+
+def run_automatic_backup_if_due():
+    """Start an automatic backup when it is switched on and the last one is a
+    day old. True when one was started."""
+    global _last_auto_attempt
+    from myapp.models import DropboxSettings
+    settings_obj = DropboxSettings.get_solo()
+    if dropbox is None or not settings_obj.auto_backup_enabled or not settings_obj.is_configured:
+        return False
+    if time.time() - _last_auto_attempt < AUTO_RETRY_SECONDS:
+        return False
+    last = last_automatic_backup(list_backup_entries(settings_obj, refresh=True))
+    now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)  # Dropbox times are naive UTC
+    if last and now - last < datetime.timedelta(hours=AUTO_BACKUP_HOURS):
+        return False
+    if not start_backup_job(settings_obj, automatic=True):
+        return False  # a backup is already running; check again next time
+    _last_auto_attempt = time.time()
+    logger.info('Automatic Dropbox backup started')
+    return True
+
+
+def _scheduler_loop():
+    time.sleep(AUTO_FIRST_CHECK_SECONDS)
+    while True:
+        try:
+            run_automatic_backup_if_due()
+        except Exception:
+            logger.warning('Automatic backup check failed; trying again later', exc_info=True)
+        finally:
+            from django.db import connection
+            connection.close()
+        time.sleep(AUTO_CHECK_SECONDS)
+
+
+def start_scheduler():
+    """Start the automatic-backup timer, once per server process."""
+    global _scheduler_started
+    if not getattr(dj_settings, 'DROPBOX_AUTO_BACKUP_ENABLED', False):
+        return False
+    with _scheduler_lock:
+        if _scheduler_started:
+            return False
+        _scheduler_started = True
+    threading.Thread(target=_scheduler_loop, name='dropbox-auto-backup', daemon=True).start()
+    return True

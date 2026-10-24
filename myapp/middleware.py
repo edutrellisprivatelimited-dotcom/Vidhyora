@@ -1,3 +1,4 @@
+from django.core.exceptions import MiddlewareNotUsed
 from django.http import HttpResponsePermanentRedirect
 from django.shortcuts import render
 
@@ -7,6 +8,19 @@ from django.utils import timezone
 
 from .models import ActiveUserSession
 from .single_device import register_active_session
+
+
+class AutoBackupMiddleware:
+    """Starts the 24-hour automatic Dropbox backup timer (see
+    dropbox_backup.start_scheduler) when the web server loads, then takes
+    itself out of the request path. Running it here rather than in
+    AppConfig.ready() keeps it out of migrate, collectstatic and other
+    management commands, which never load the middleware."""
+
+    def __init__(self, get_response):
+        from myapp import dropbox_backup
+        dropbox_backup.start_scheduler()
+        raise MiddlewareNotUsed
 
 
 class SiteDisabledMiddleware:

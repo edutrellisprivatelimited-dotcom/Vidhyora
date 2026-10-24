@@ -6366,6 +6366,20 @@ class DropboxStoragePanelTests(TestCase):
         self.assertIn('Connected', body)
         self.assertIn('built-in credentials', body)
 
+    def test_automatic_backup_is_on_by_default_and_can_be_switched_off_and_on(self):
+        body = self.client.get(self.URL).content.decode()
+        self.assertIn('Automatic backup every 24 hours', body)
+        self.assertIn('Last automatic backup: <b>none yet', body)
+        self.assertIn('Turn off automatic backup', body)
+
+        body = self.client.post(self.SAVE, {'action': 'auto_off'}, follow=True).content.decode()
+        self.assertFalse(DropboxSettings.get_solo().auto_backup_enabled)
+        self.assertIn('Automatic backup is off', body)
+        self.assertIn('Turn on automatic backup', body)
+
+        self.client.post(self.SAVE, {'action': 'auto_on'})
+        self.assertTrue(DropboxSettings.get_solo().auto_backup_enabled)
+
     def test_saving_new_credentials_switches_the_account_and_the_backup_list(self):
         response = self._save(app_key='new-key', app_secret='new-secret', refresh_token='new-token')
         body = response.content.decode()

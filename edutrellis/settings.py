@@ -42,6 +42,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'myapp.middleware.AutoBackupMiddleware',
     'myapp.middleware.CanonicalHostMiddleware',
     'myapp.middleware.SiteDisabledMiddleware',
     'myapp.middleware.CustomModelsMiddleware',
@@ -199,6 +200,10 @@ DROPBOX_IMAGE_ARCHIVE_ENABLED = not (
     'test' in sys.argv
     or os.path.basename(sys.argv[0] if sys.argv else '').startswith(('pytest', 'py.test'))
 )
+
+# The 24-hour automatic Dropbox backup timer (myapp.dropbox_backup.start_scheduler).
+# Off under tests so no test uploads the real database.
+DROPBOX_AUTO_BACKUP_ENABLED = DROPBOX_IMAGE_ARCHIVE_ENABLED
 
 # Long messages and long chats are shortened before they reach the chat model
 # (myapp.context_compress). Off under tests so no test calls the real model.

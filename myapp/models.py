@@ -416,6 +416,7 @@ class DropboxSettings(models.Model):
     app_key       = models.CharField(max_length=200, blank=True)
     app_secret    = models.CharField(max_length=200, blank=True)
     refresh_token = models.CharField(max_length=400, blank=True)
+    auto_backup_enabled = models.BooleanField(default=True, help_text='Back up to Dropbox every 24 hours, replacing the previous automatic backup.')
     updated_at    = models.DateTimeField(auto_now=True)
 
     class Meta:

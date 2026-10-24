@@ -133,7 +133,7 @@ class LargeBackupTests(SimpleTestCase):
         with tempfile.TemporaryDirectory() as folder:
             status_file = Path(folder) / 'status.json'
 
-            def fake_create(settings_obj, *, missing_images=None, progress=None):
+            def fake_create(settings_obj, *, missing_images=None, progress=None, automatic=False):
                 progress('Uploading to Dropbox: 5 of 10 MB')
                 missing_images.append('avatars/gone.png')
                 return 'backup_x.zip'
@@ -170,7 +170,7 @@ class LargeBackupTests(SimpleTestCase):
             status_file = Path(folder) / 'status.json'
             reached, release, outcome = threading.Event(), threading.Event(), {}
 
-            def fake_create(settings_obj, *, missing_images=None, progress=None):
+            def fake_create(settings_obj, *, missing_images=None, progress=None, automatic=False):
                 progress('Packing')
                 reached.set()
                 release.wait(5)
@@ -203,3 +203,78 @@ class LargeBackupTests(SimpleTestCase):
             status_file.write_text(json.dumps({'state': 'running', 'started': now - 1200, 'updated': now - 1200, 'message': 'Packing'}))
             with patch.object(backup, 'STATUS_FILE', status_file):
                 self.assertEqual(backup.job_status()['state'], 'error')
+
+
+class AutomaticBackupTests(SimpleTestCase):
+    def _database(self, folder):
+        path = Path(folder) / 'db.sqlite3'
+        with closing(sqlite3.connect(path)) as connection:
+            connection.execute('CREATE TABLE example (id INTEGER)')
+            connection.commit()
+        return path
+
+    def _listing(self, *names):
+        return SimpleNamespace(entries=[SimpleNamespace(name=name) for name in names], has_more=False)
+
+    def test_an_automatic_backup_replaces_only_the_previous_automatic_one(self):
+        with tempfile.TemporaryDirectory() as folder:
+            dbx = Mock()
+            uploaded = []
+            dbx.files_upload.side_effect = lambda content, path, mode: uploaded.append(path)
+            dbx.files_list_folder.side_effect = lambda path: self._listing(
+                'auto_backup_20260101_000000_000000.zip', 'backup_20260102_000000_000000.zip',
+                'latest.json', *(p.rsplit('/', 1)[1] for p in uploaded))
+            with patch.object(backup, 'db_path', return_value=self._database(folder)), patch.object(backup, '_client', return_value=dbx), patch.object(backup, '_image_files', return_value=[]):
+                filename = backup.create_backup(SimpleNamespace(), automatic=True)
+        self.assertTrue(filename.startswith(backup.AUTO_PREFIX))
+        dbx.files_delete_v2.assert_called_once_with(f'{backup.BACKUP_FOLDER}/auto_backup_20260101_000000_000000.zip')
+
+    def test_the_previous_automatic_backup_is_kept_when_the_upload_fails(self):
+        with tempfile.TemporaryDirectory() as folder:
+            dbx = Mock()
+            dbx.files_upload.side_effect = RuntimeError('connection reset')
+            dbx.files_list_folder.return_value = self._listing('auto_backup_20260101_000000_000000.zip')
+            with patch.object(backup, 'db_path', return_value=self._database(folder)), patch.object(backup, '_client', return_value=dbx), patch.object(backup, '_image_files', return_value=[]):
+                with self.assertRaises(backup.BackupError):
+                    backup.create_backup(SimpleNamespace(), automatic=True)
+        dbx.files_delete_v2.assert_not_called()
+
+    def test_a_manual_backup_never_removes_anything(self):
+        with tempfile.TemporaryDirectory() as folder:
+            dbx = Mock()
+            dbx.files_list_folder.return_value = self._listing('auto_backup_20260101_000000_000000.zip')
+            with patch.object(backup, 'db_path', return_value=self._database(folder)), patch.object(backup, '_client', return_value=dbx), patch.object(backup, '_image_files', return_value=[]):
+                filename = backup.create_backup(SimpleNamespace())
+        self.assertTrue(filename.startswith('backup_'))
+        dbx.files_delete_v2.assert_not_called()
+
+    def _run_if_due(self, entries, enabled=True):
+        settings_obj = SimpleNamespace(auto_backup_enabled=enabled, is_configured=True)
+        with patch('myapp.models.DropboxSettings.get_solo', return_value=settings_obj), \
+                patch.object(backup, '_last_auto_attempt', 0.0), \
+                patch.object(backup, 'list_backup_entries', return_value=entries), \
+                patch.object(backup, 'start_backup_job', return_value=True) as start:
+            started = backup.run_automatic_backup_if_due()
+        return started, start
+
+    def test_a_backup_starts_when_none_exists_or_the_last_is_a_day_old(self):
+        import datetime
+        now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+        for entries in ([], [('auto_backup_old.zip', now - datetime.timedelta(hours=25))]):
+            started, start = self._run_if_due(entries + [('backup_manual.zip', now)])
+            self.assertTrue(started)
+            start.assert_called_once_with(start.call_args.args[0], automatic=True)
+
+    def test_no_backup_when_the_last_one_is_recent_or_it_is_switched_off(self):
+        import datetime
+        now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+        started, start = self._run_if_due([('auto_backup_new.zip', now - datetime.timedelta(hours=3))])
+        self.assertFalse(started)
+        started, start = self._run_if_due([], enabled=False)
+        self.assertFalse(started)
+        start.assert_not_called()
+
+    def test_the_timer_does_not_run_under_tests(self):
+        with patch.object(backup.threading, 'Thread') as thread:
+            self.assertFalse(backup.start_scheduler())
+        thread.assert_not_called()

@@ -2377,8 +2377,13 @@ def dashboard_backup(request):
 
     sources = _dropbox_sources(settings_obj)
     running_job = backup_job if backup_job and backup_job.get('state') == 'running' else None
+    last_auto = dropbox_backup.last_automatic_backup([(b['name'], b['client_modified']) for b in backups])
+    next_auto = last_auto + timedelta(hours=dropbox_backup.AUTO_BACKUP_HOURS) if last_auto else None
     return render(request, 'dashboard/backup.html', {
         'backup_running': running_job,
+        'last_auto_backup': last_auto,
+        'next_auto_backup': next_auto if next_auto and next_auto > timezone.now() else None,
+        'auto_backup_hours': dropbox_backup.AUTO_BACKUP_HOURS,
         'active': 'backup', 'settings_obj': settings_obj, 'backups': backups,
         'list_error': list_error, 'dropbox_installed': installed,
         'backup_folder': dropbox_backup.BACKUP_FOLDER,
@@ -2406,6 +2411,15 @@ def dashboard_backup_settings(request):
         return redirect('dashboard_backup')
     settings_obj = DropboxSettings.get_solo()
     action = request.POST.get('action', 'save')
+
+    if action in ('auto_on', 'auto_off'):
+        settings_obj.auto_backup_enabled = action == 'auto_on'
+        settings_obj.save(update_fields=['auto_backup_enabled', 'updated_at'])
+        if settings_obj.auto_backup_enabled:
+            messages.success(request, 'Automatic backup is on. A backup is saved to Dropbox every 24 hours, and each one replaces the previous automatic backup.')
+        else:
+            messages.success(request, 'Automatic backup is off. Your existing backups are kept. You can still use "Backup Now".')
+        return redirect('dashboard_backup')
 
     if action == 'reset':
         dropbox_backup.forget_account(settings_obj)
