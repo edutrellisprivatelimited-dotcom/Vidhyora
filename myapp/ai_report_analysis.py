@@ -4,7 +4,7 @@ The functions in this module deliberately use only evidence saved on an
 ``AIReport``-like object.  They do not call an AI model, inspect remote files,
 or claim that a reported failure has been proven.  Their purpose is to turn
 explicit wording in a report into stable, explainable queues for a human or an
-engineering teams.
+engineering team.
 
 An ``AIReport``-like value may be either an object with attributes or a mapping
 with the same keys.  The useful fields are ``user_prompt``, ``reported_reply``,
