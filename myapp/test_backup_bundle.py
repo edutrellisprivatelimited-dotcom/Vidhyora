@@ -59,7 +59,8 @@ class BackupBundleTests(SimpleTestCase):
             with override_settings(MEDIA_ROOT=root / 'media'), patch.object(backup, 'db_path', return_value=database), patch.object(backup, '_client', return_value=dbx), patch.object(backup, '_image_files', return_value=[('pwa/icon.png', storage), ('branding/favicon.ico', storage), ('branding/social/share.png', storage)]):
                 filename = backup.create_backup(SimpleNamespace())
                 self.assertEqual(dbx.files_upload.call_count, 2)
-                self.assertTrue(dbx.files_upload.call_args_list[1].args[1].endswith('/latest.json'))
+                self.assertEqual(dbx.files_upload.call_args_list[0].args[1], f'{backup.backup_folder()}/{filename}')
+                self.assertEqual(dbx.files_upload.call_args_list[1].args[1], f'{backup.backup_folder()}/latest.json')
                 self.assertLess(len(dbx.files_upload.call_args_list[1].args[0]), 200)
                 content = dbx.files_upload.call_args_list[0].args[0]
                 with zipfile.ZipFile(io.BytesIO(content)) as archive:
@@ -227,7 +228,7 @@ class AutomaticBackupTests(SimpleTestCase):
             with patch.object(backup, 'db_path', return_value=self._database(folder)), patch.object(backup, '_client', return_value=dbx), patch.object(backup, '_image_files', return_value=[]):
                 filename = backup.create_backup(SimpleNamespace(), automatic=True)
         self.assertRegex(filename, r'^Vidhyora_Auto-Backup_\d\d-[A-Z][a-z]{2}-\d{4}_\d\d-\d\d-\d\d-[AP]M\.zip$')
-        dbx.files_delete_v2.assert_called_once_with(f'{backup.BACKUP_FOLDER}/auto_backup_20260101_000000_000000.zip')
+        dbx.files_delete_v2.assert_called_once_with(f'{backup.backup_folder()}/auto_backup_20260101_000000_000000.zip')
 
     def test_the_previous_automatic_backup_is_kept_when_the_upload_fails(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -321,7 +322,12 @@ class BackupPageActionTests(TestCase):
     def test_backup_now_explains_when_the_automatic_backup_is_busy(self):
         import time as _time
         self.status_file.write_text(json.dumps({'state': 'running', 'started': _time.time(), 'message': 'Packing', 'automatic': True}))
-        with patch('myapp.models.DropboxSettings.is_configured', True):
+        with patch('myapp.models.DropboxSettings.is_configured', True), \
+                patch.object(backup, 'account_info', return_value={
+                    'name': 'Asha Rao', 'email': 'asha@example.com', 'used': None, 'allocated': None,
+                    'limited': False, 'folder': backup.backup_folder(),
+                }), \
+                patch.object(backup, 'list_backup_entries', return_value=[]):
             response = self.client.post('/store/dashboard/backup/run/', follow=True)
         self.assertContains(response, 'automatic daily backup is running right now')
 
@@ -330,7 +336,7 @@ class BackupPageActionTests(TestCase):
         with patch.object(backup, '_client', return_value=dbx):
             response = self.client.post('/store/dashboard/backup/delete/', {'filename': 'backup_1.zip'}, follow=True)
             self.client.post('/store/dashboard/backup/delete/', {'filename': '../secret.zip'})
-        dbx.files_delete_v2.assert_called_once_with(f'{backup.BACKUP_FOLDER}/backup_1.zip')
+        dbx.files_delete_v2.assert_called_once_with(f'{backup.backup_folder()}/backup_1.zip')
         self.assertContains(response, 'Deleted')
 
     def test_download_goes_straight_to_dropbox_or_gives_just_the_database(self):

@@ -25,7 +25,7 @@ def _always_busy(**kwargs):
     raise Busy()
 
 
-def _ask(create, model_key='terra', backups=None):
+def _ask(create, model_key='terra', backups=None, route=None):
     """Run one turn. backups=None leaves the real backup list out (no backups),
     a list of model ids makes those the backups, tried in that order."""
     client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
@@ -39,7 +39,7 @@ def _ask(create, model_key='terra', backups=None):
             patch('myapp.ai_chat.time.sleep') as sleep:
         try:
             return ''.join(ai_chat._stream_chat_impl(
-                [{'role': 'user', 'content': 'Say OK'}], model_key)), sleep
+                [{'role': 'user', 'content': 'Say OK'}], model_key, route=route)), sleep
         except Exception as exc:
             return exc, sleep
 
@@ -122,6 +122,33 @@ class BackupModelTests(SimpleTestCase):
         error, _ = _ask(create, backups=['backup/one'])
         self.assertIsInstance(error, BadRequest)
         self.assertEqual(create.call_count, 1)
+
+    def test_a_reply_from_a_backup_is_marked_as_forwarded(self):
+        route = {}
+        reply, _ = _ask(self._answers_only('backup/one'), backups=['backup/one'], route=route)
+        self.assertEqual(reply, 'Answer from the backup.')
+        self.assertTrue(route.get('forwarded'))
+
+    def test_a_reply_from_the_selected_model_is_not_marked(self):
+        route = {}
+        _ask(Mock(side_effect=[Busy(), _answer('OK')]), backups=['backup/one'], route=route)
+        self.assertFalse(route.get('forwarded'))
+        route = {}
+        # No backup at all: the same model is waited on again, not forwarded.
+        _ask(Mock(side_effect=[Busy(), Busy(), Busy(), _answer('OK')]), route=route)
+        self.assertFalse(route.get('forwarded'))
+
+    def test_the_second_and_third_models_are_asked_even_after_the_time_limit(self):
+        route = {}
+        with patch.object(ai_chat, 'FALLBACK_TOTAL_SECONDS', -1.0):
+            reply, _ = _ask(self._answers_only('backup/two', 'Third model.'),
+                            backups=['backup/one', 'backup/two', 'backup/three'], route=route)
+            self.assertEqual(reply, 'Third model.')
+            self.assertTrue(route['forwarded'])
+            # ...but no further than that once the time is up.
+            error, _ = _ask(self._answers_only('backup/three'),
+                            backups=['backup/one', 'backup/two', 'backup/three'])
+            self.assertIsInstance(error, Busy)
 
 
 class BackupListTests(SimpleTestCase):

@@ -46,6 +46,8 @@ from myapp.forms import PhoneVerifyForm, AILoginForm, SignupEditForm, AIProfileE
 from myapp.models import ContactSubmission, StoreProfile, Order, OrderItem, PaymentSettings, Payment, DropboxSettings, PhoneVerification, PWASettings, SiteCustomization, AIAccountMessageSettings, AIConversation, AIMessage, AIBlock, AINote, AIReport, AIGeneratedFile, AIUserImage, GitHubConnection, YouTubeDownloadJob, AIAPIAccess, AIAPIKey, ProviderAPICredential, AIVideoJob
 from myapp import dropbox_backup
 from myapp import dropbox_images
+from myapp import dropbox_layout
+from myapp import image_edit, image_sheet, image_store
 from myapp import ai_chat
 from myapp import context_compress
 from myapp import media_models
@@ -75,7 +77,7 @@ from myapp.ai_report_analysis import analyze_report, aggregate_report_issues
 from myapp.emailing import send_store_email, get_notify_email
 from myapp.sms import send_phone_otp, verify_phone_otp
 from myapp import model_controls
-from myapp.single_device import register_active_session
+from myapp.devices import keep_only_this_device
 
 logger = logging.getLogger(__name__)
 
@@ -553,8 +555,9 @@ def ai_password_change(request):
 
     request.user.set_password(form.cleaned_data['new_password'])
     request.user.save(update_fields=['password'])
+    old_session_key = request.session.session_key
     update_session_auth_hash(request, request.user)  # keep the session logged in
-    register_active_session(request.user, request.session.session_key)
+    keep_only_this_device(request.user, old_session_key, request.session.session_key)
     return JsonResponse({'status': 'ok'})
 
 
@@ -1845,11 +1848,8 @@ def _ai_report_system_health():
     )
     missing_images = 0
     for image_value in generated_images:
-        storage_name = _ai_storage_name_from_url(image_value)
-        if not storage_name:
-            continue
         try:
-            if not default_storage.exists(storage_name):
+            if not image_store.is_available(image_value):
                 missing_images += 1
         except Exception:
             # Storage availability is unknown, not proof that the image is
@@ -2027,16 +2027,11 @@ def _dashboard_ai_image_response(image_value):
             return HttpResponse('Image is too large to preview.', status=413, content_type='text/plain')
         response = HttpResponse(raw, content_type=match.group(1).lower())
     else:
-        storage_name = _ai_storage_name_from_url(image_value)
-        if storage_name:
-            try:
-                image_file = default_storage.open(storage_name, 'rb')
-            except Exception:
+        if image_store.stored_image_for_url(image_value) or _ai_storage_name_from_url(image_value):
+            found = image_store.read_url(image_value)
+            if not found:
                 return HttpResponse('Image file is unavailable.', status=404, content_type='text/plain')
-            response = FileResponse(
-                image_file,
-                content_type=mimetypes.guess_type(storage_name)[0] or 'application/octet-stream',
-            )
+            response = HttpResponse(found[0], content_type=found[1])
         else:
             parsed = urlsplit(image_value)
             if parsed.scheme not in ('http', 'https'):
@@ -2389,7 +2384,10 @@ def dashboard_backup(request):
         'auto_backup_runs_here': settings.DROPBOX_AUTO_BACKUP_ENABLED,
         'active': 'backup', 'settings_obj': settings_obj, 'backups': backups,
         'list_error': list_error, 'dropbox_installed': installed,
-        'backup_folder': dropbox_backup.BACKUP_FOLDER,
+        'backup_folder': dropbox_backup.backup_folder(),
+        'dropbox_root': dropbox_layout.root(),
+        'dropbox_subfolders': (dropbox_layout.BACKUPS, dropbox_layout.IMAGES, dropbox_layout.REPORTS),
+        'image_summary': image_store.summary(),
         'account': account, 'account_error': account_error,
         'connected': bool(account),
         'sources': sources,
@@ -2752,6 +2750,9 @@ AI_IMAGE_DAILY_LIMIT = 20         # successfully generated images, per account/s
 # Starts a streamed reply that is an error message rather than an answer.
 # Invisible, and tells the page not to show that turn's web sources.
 AI_REPLY_FAILED_MARK = '\u2063'
+# Ends a streamed reply that a backup model gave because the selected one was
+# busy or switched off; the page shows a small note under it. Not saved.
+AI_REPLY_FORWARDED_MARK = '\u2064'
 AI_VIDEO_DAILY_LIMIT = 5          # videos asked for, per account and local day (staff: no limit)
 # Accounts exempt from AI_IMAGE_DAILY_LIMIT entirely, by login email —
 # a manual allowlist rather than a plan/subscription flag, so it's just
@@ -2782,6 +2783,8 @@ AI_FULL_ACCESS_ONLY_MODEL_KEYS = frozenset({
 # body, so an oversized image gets our own clean error instead of Django's
 # generic one. The client also resizes/compresses before ever uploading.
 AI_IMAGE_MAX_DATA_URI_CHARS = 2_000_000
+# Heads the picture's OCR text when it is saved after the text of files sent with it.
+AI_IMAGE_TEXT_HEADING = 'Text read from the attached image:'
 AI_DOCUMENT_MODES = {'coding', 'details', 'multi'}
 AI_DOCUMENT_CODE_MAX_OUTPUT_TOKENS = 6000
 AI_GENERATED_FILE_MAX_OUTPUT_TOKENS = 10000
@@ -3574,7 +3577,8 @@ def ai_page(request):
         'ai_languages': [
             {
                 'code': code, 'label': label, 'short': short, 'speech': speech, 'group': group,
-                'search': f'{label} {code}'.lower(),
+                'native': ai_chat.LANGUAGE_NAMES[code][0], 'english': ai_chat.LANGUAGE_NAMES[code][1],
+                'search': f'{label} {ai_chat.LANGUAGE_NAMES[code][1]} {code}'.lower(),
             }
             for code, label, short, speech, group in ai_chat.LANGUAGE_MENU
         ],
@@ -4355,10 +4359,20 @@ def _ai_chat_failure_reply(error, response_model_key, is_staff=False):
     )
 
 
-def _ai_flux_response(conversation, prompt, source_image, response_model_key=None, owner_email=''):
-    """Run a FLUX generation/editing turn and persist the real image URL."""
+def _ai_flux_response(conversation, prompt, source_image, response_model_key=None, owner_email='',
+                      source_words=None, earlier_brief=''):
+    """Run a FLUX generation/editing turn and persist the real image URL.
+    ``source_words`` is the OCR text of an attached picture, when already read;
+    ``earlier_brief`` is the brief an earlier redrawn picture was saved with."""
     display_model_key = response_model_key or ai_chat.FLUX_KLEIN_4B_MODEL_KEY
     model_controls.record_request(ai_chat.FLUX_KLEIN_4B_MODEL_KEY)
+    # No caption text for a plain picture — the image speaks for itself, and a
+    # canned "Image generated successfully." heading above every single image
+    # was just noise. The frontend (finalizeBubble in ai.html) knows not to
+    # fall back to its usual "No response" placeholder when generatedImageUrl
+    # is set, so an empty reply renders as just the image.
+    reply = ''
+    brief = ''
     try:
         try:
             # A poster with words that must be exact (brand name, price,
@@ -4369,24 +4383,19 @@ def _ai_flux_response(conversation, prompt, source_image, response_model_key=Non
             if generated is None:
                 generated = image_generation.generate_image(prompt, source_image or None)
         except image_generation.ImageGenerationError as exc:
-            # The connected backend can't actually edit an uploaded reference
-            # image at all (see ImageGenerationError.editing_unavailable) —
-            # rather than dead-ending on "contact support", read the photo
-            # with the vision model and generate a brand-new image from the
-            # combined description + requested changes instead.
+            # The connected backend can't edit an uploaded picture at all (see
+            # ImageGenerationError.editing_unavailable), so it is read, the
+            # change is worked into a brief, and it is drawn again from that
+            # brief — see myapp/image_edit.py.
             if not (exc.editing_unavailable and source_image):
                 raise
-            description = ai_chat.describe_image_for_edit(source_image)
-            if not description:
-                raise
-            combined_prompt = (
-                f"{prompt.strip()}. The reference photo shows: {description}"
-            )[:image_generation.MAX_PROMPT_CHARS]
-            generated = image_generation.generate_image(combined_prompt, None)
-        dated_folder = timezone.now().strftime('%Y/%m/%d')
-        filename = f"ai_generated/{dated_folder}/{secrets.token_hex(16)}.{generated.extension}"
-        stored_name = default_storage.save(filename, ContentFile(generated.content))
-        generated_url = default_storage.url(stored_name)
+            redrawn = image_edit.redraw(source_image, prompt, words=source_words, earlier_brief=earlier_brief)
+            generated, brief = redrawn.image, redrawn.brief
+            reply = '\n\n'.join(part for part in (redrawn.change, image_edit.REDRAWN_NOTE) if part)
+        # Compressed to WebP, cached on the server and uploaded to Dropbox in
+        # the background (see myapp.image_store); the link is this site's own.
+        stored_image = image_store.save_generated(generated.content, conversation.user, owner_email, brief=brief)
+        generated_url = image_store.url_for(stored_image)
     except image_generation.ImageGenerationError as exc:
         model_controls.record_error(ai_chat.FLUX_KLEIN_4B_MODEL_KEY, str(exc))
         service_down = exc.status_code == 503 and not exc.blocked and not exc.editing_unavailable
@@ -4422,21 +4431,6 @@ def _ai_flux_response(conversation, prompt, source_image, response_model_key=Non
 
     model_controls.record_success(ai_chat.FLUX_KLEIN_4B_MODEL_KEY)
 
-    # Mirror the image into the owner's Dropbox archive, because local media
-    # storage does not survive a redeploy. Placed after the try/except above
-    # so it can never be mistaken for a generation failure, and enqueue() only
-    # hands the bytes to a background thread — no network happens here, so
-    # this costs the reply nothing measurable.
-    dropbox_images.enqueue(
-        generated.content, generated.extension, owner_email, local_name=stored_name,
-    )
-
-    # No caption text — the image speaks for itself, and a canned "Image
-    # generated successfully." heading above every single image was just
-    # noise. The frontend (finalizeBubble in ai.html) knows not to fall
-    # back to its usual "No response" placeholder when generatedImageUrl
-    # is set, so an empty reply here renders as just the image.
-    reply = ''
     assistant_message = AIMessage.objects.create(
         conversation=conversation,
         role=AIMessage.ROLE_ASSISTANT,
@@ -4574,28 +4568,29 @@ def _ai_image_daily_count(request):
 def _ai_previous_image_for_edit(request, conversation_id, message):
     """Return the latest usable image when a follow-up clearly asks to edit it:
     an edit verb ("change", "remove"...), or - straight after the AI has shown
-    a picture - a few words about how it should look ("hands up pose")."""
+    a picture - a few words about how it should look ("hands up pose").
+    Returns (data URI, the image's saved link) or ('', '')."""
     explicit_edit = ai_chat.is_image_edit_instruction(message)
     if not conversation_id or not (explicit_edit or ai_chat.is_image_followup(message)):
-        return ''
+        return '', ''
     try:
         conversation_id = int(conversation_id)
     except (TypeError, ValueError):
-        return ''
+        return '', ''
     conversation = AIConversation.objects.filter(
         _ai_owner_filter(request), pk=conversation_id,
     ).first()
     if not conversation:
-        return ''
+        return '', ''
     if not explicit_edit:
         latest = _ai_visible_messages(request, conversation).order_by('-created_at', '-pk').first()
         if not latest or latest.role != AIMessage.ROLE_ASSISTANT or not latest.image_data:
-            return ''
+            return '', ''
     previous = _ai_visible_messages(request, conversation).exclude(image_data='').order_by(
         '-created_at', '-pk',
-    ).values_list('image_data', flat=True).first()
-    snapshotted = _snapshot_ai_report_image(previous or '')
-    return snapshotted if snapshotted.startswith('data:image/') else ''
+    ).values_list('image_data', flat=True).first() or ''
+    snapshotted = _snapshot_ai_report_image(previous)
+    return (snapshotted, previous) if snapshotted.startswith('data:image/') else ('', '')
 
 
 def _ai_previous_generated_image(request, conversation_id, message):
@@ -4831,12 +4826,28 @@ def _ai_chat_send(request):
     image_data = payload.get('image')
     if not isinstance(image_data, str) or not image_data.startswith('data:image/'):
         image_data = ''
-    if image_data and len(image_data) > AI_IMAGE_MAX_DATA_URI_CHARS:
+    # Several pictures in one message come as ``images`` and are laid out
+    # together, numbered, as one picture (myapp.image_sheet), so everything
+    # after this — vision, OCR, editing, the saved message — has one image.
+    images = payload.get('images')
+    images = [u for u in images if isinstance(u, str) and u.startswith('data:image/')] if isinstance(images, list) else []
+    if len(images) > image_sheet.MAX_IMAGES:
+        return JsonResponse({'status': 'error', 'detail': f'You can attach up to {image_sheet.MAX_IMAGES} images per message.'}, status=400)
+    if any(len(u) > AI_IMAGE_MAX_DATA_URI_CHARS for u in images + [image_data]):
         return JsonResponse({'status': 'error', 'detail': 'That image is too large — please use a smaller one.'}, status=400)
+    image_note = ''
+    if len(images) > 1:
+        image_data = image_sheet.combine(images)
+        if not image_data:
+            return JsonResponse({'status': 'error', 'detail': "Those images couldn't be read — please try other ones."}, status=400)
+        image_note = image_sheet.note(len(images))
+    elif images and not image_data:
+        image_data = images[0]
 
     # OCR supplements the multimodal model for screenshots and documents.
     # Failure is harmless: the original image is still analysed by Vision.
-    image_ocr_text = image_ocr.extract_data_uri(image_data) if image_data else ''
+    image_words = image_ocr.extract_data_uri(image_data) if image_data else ''
+    image_ocr_text = '\n\n'.join(part for part in (image_note, image_words) if part)
 
     # document_text/document_name come from a prior call to /AI/api/extract/
     # (the raw file itself is never sent here) — re-capped defensively since
@@ -4855,7 +4866,13 @@ def _ai_chat_send(request):
     if replace_target is not None and not image_data and not document_text:
         if replace_target.image_data:
             image_data = replace_target.image_data
-            image_ocr_text = replace_target.document_text
+            image_words = None   # read again if the picture is edited
+            if replace_target.document_name and replace_target.document_text:
+                # A picture sent with files: their text and its OCR were saved together.
+                document_text = replace_target.document_text
+                document_name = replace_target.document_name
+            else:
+                image_ocr_text = replace_target.document_text
         elif replace_target.document_name and replace_target.document_text:
             document_text = replace_target.document_text
             document_name = replace_target.document_name
@@ -4885,9 +4902,9 @@ def _ai_chat_send(request):
     previous_display_image = _ai_previous_generated_image(
         request, payload.get('conversation_id'), message,
     ) if message else ''
-    previous_edit_image = ''
+    previous_edit_image = previous_edit_url = ''
     if not image_data and message:
-        previous_edit_image = _ai_previous_image_for_edit(
+        previous_edit_image, previous_edit_url = _ai_previous_image_for_edit(
             request, payload.get('conversation_id'), message,
         )
     source_image_data = image_data or previous_edit_image
@@ -4906,14 +4923,24 @@ def _ai_chat_send(request):
         if requested_model_key in ai_chat.MODELS
         else default_model_key
     )
+    # A switched-off text model doesn't stop the turn: it goes to the next
+    # model in the backup order this account may use, with a note under it.
+    forwarded = False
     if not ai_chat.is_model_enabled(selected_model_key):
-        return JsonResponse({
-            'status': 'model_disabled',
-            'detail': (
-                f"{ai_chat.MODELS[selected_model_key]['label']} is temporarily unavailable. "
-                'Please pick another model from the model menu.'
-            ),
-        }, status=403)
+        backup_key = None if selected_model_key == ai_chat.FLUX_KLEIN_4B_MODEL_KEY else next((
+            key for key in ai_chat.FALLBACK_ORDER
+            if key != selected_model_key and key in ai_chat.MODELS and ai_chat.is_model_enabled(key)
+            and (full_model_access or key in AI_FREE_MODEL_KEYS)
+        ), None)
+        if backup_key is None:
+            return JsonResponse({
+                'status': 'model_disabled',
+                'detail': (
+                    f"{ai_chat.MODELS[selected_model_key]['label']} is temporarily unavailable. "
+                    'Please pick another model from the model menu.'
+                ),
+            }, status=403)
+        selected_model_key, forwarded = backup_key, True
     chatgpt_mode = selected_model_key == ai_chat.CHATGPT_56_MODEL_KEY
     # Whatever the turn is auto-routed to (image generation, vision, code...),
     # the reply is always shown, labelled and saved under the model the user
@@ -5195,10 +5222,15 @@ def _ai_chat_send(request):
     # "ignore everything from the replaced message on" rule must not also hide
     # the message created next.
     request._ai_replace_from_pk = None
+    if document_text and image_ocr_text:
+        # Files and a picture sent together share the one text field.
+        saved_document_text = f'{document_text}\n\n{AI_IMAGE_TEXT_HEADING}\n{image_ocr_text}'
+    else:
+        saved_document_text = document_text or image_ocr_text
     user_message = AIMessage.objects.create(
         conversation=conversation, role=AIMessage.ROLE_USER, content=message,
         image_data=image_data, document_name=document_name,
-        document_text=document_text or image_ocr_text,
+        document_text=saved_document_text,
         reply_to_text=_ai_reply_quote(payload),
     )
     request._ai_user_message_id = user_message.pk
@@ -5257,9 +5289,13 @@ def _ai_chat_send(request):
         # email here is free — resolving it inside the upload thread would cost
         # an extra query and a database connection per image.
         owner_email = request.user.email if request.user.is_authenticated else ''
+        # Editing the picture shown earlier in this chat: a picture redrawn
+        # here before carries the brief with its exact words.
+        earlier = image_store.stored_image_for_url(previous_edit_url) if not image_data and previous_edit_url else None
         return _ai_flux_response(
             conversation, image_generation_prompt, source_image_data, response_model_key,
-            owner_email=owner_email,
+            owner_email=owner_email, source_words=image_words if image_data else None,
+            earlier_brief=earlier.brief if earlier else '',
         )
     if video_row is not None:
         return _ai_video_response(request, conversation, message, video_row, response_model_key)
@@ -5315,14 +5351,27 @@ def _ai_chat_send(request):
             continue
         is_current_image = bool(m['image_data']) and index == len(recent) - 1
         if is_current_image and model_cfg['vision']:
-            ocr_note = f"\n\nLocally detected text:\n{m['document_text']}" if m['document_text'] else ''
+            if m['document_name'] and m['document_text']:
+                # Files sent with the picture: their text, then the picture's OCR.
+                text = (
+                    f"[Attached document: {m['document_name']}]\n{m['document_text']}\n\n---\n"
+                    f"{m['content'] or 'Please review the attached files and image.'}"
+                )
+            else:
+                ocr_note = f"\n\nLocally detected text:\n{m['document_text']}" if m['document_text'] else ''
+                text = (m['content'] or 'Describe and analyse this image.') + ocr_note
             content = [
-                {'type': 'text', 'text': (m['content'] or 'Describe and analyse this image.') + ocr_note},
+                {'type': 'text', 'text': text},
                 {'type': 'image_url', 'image_url': {'url': m['image_data']}},
             ]
         elif m['image_data'] and m['role'] == AIMessage.ROLE_ASSISTANT:
             # This is a generated media URL, not a new user attachment.
             content = (m['content'] + ' [An image was generated in this turn.]').strip()
+        elif m['image_data'] and m['document_name'] and m['document_text']:
+            content = (
+                f"[Attached document: {m['document_name']}]\n{m['document_text']}\n\n---\n"
+                f"{m['content']} [An image was attached too and analysed.]"
+            ).strip()
         elif m['image_data']:
             # Historical base64 image bytes are not resent. The earlier
             # assistant analysis remains in history, with OCR as backup.
@@ -5509,6 +5558,8 @@ def _ai_chat_send(request):
         bool(image_data), len(image_ocr_text),
     )
 
+    route = {'forwarded': forwarded}
+
     def model_stream(instruction=document_instruction):
         if voice_instruction and not generated_file_spec:
             instruction = ((instruction or '') + ' ' + voice_instruction).strip()
@@ -5530,6 +5581,7 @@ def _ai_chat_send(request):
             ),
             onboarding_ask=onboarding_ask,
             power=power,
+            route=route,
         )
 
     def event_stream():
@@ -5666,6 +5718,8 @@ def _ai_chat_send(request):
                     logger.exception("Failed to save an AI-generated download")
                     saved_reply = "I couldn’t save the downloadable file. Please try again."
                     yield saved_reply
+            if route['forwarded']:
+                yield AI_REPLY_FORWARDED_MARK
         except Exception as e:
             # ai_chat.stream_chat already retries transient failures on its
             # own before ever raising here — reaching this point means every
@@ -6714,17 +6768,12 @@ def ai_images_download_all(request):
     notes = []
     with zipfile.ZipFile(archive_file, 'w', zipfile.ZIP_STORED) as archive:
         for image in AIUserImage.objects.filter(user=request.user).order_by('created_at', 'pk').iterator():
-            storage_name = _ai_storage_name_from_url(image.url)
-            extension = Path(storage_name).suffix.lower() if storage_name else ''
-            if not storage_name or extension not in _AI_IMAGE_EXTENSIONS:
+            extension = Path(urlsplit(image.url).path).suffix.lower()
+            found = image_store.read_url(image.url) if extension in _AI_IMAGE_EXTENSIONS else None
+            if not found:
                 missing += 1
                 continue
-            try:
-                with default_storage.open(storage_name, 'rb') as stored:
-                    data = stored.read()
-            except Exception:
-                missing += 1
-                continue
+            data = found[0]
             stamp = timezone.localtime(image.created_at).strftime('%Y-%m-%d_%H%M%S')
             filename = f'{stamp}_{image.pk}{extension}'
             archive.writestr(filename, data)
@@ -6792,22 +6841,19 @@ def _snapshot_ai_report_image(image_value):
         return ''
     if image_value.startswith('data:image/'):
         return image_value[:AI_IMAGE_MAX_DATA_URI_CHARS]
-    storage_name = _ai_storage_name_from_url(image_value)
-    if not storage_name:
+    if not (image_store.stored_image_for_url(image_value) or _ai_storage_name_from_url(image_value)):
         return image_value
-    try:
-        with default_storage.open(storage_name, 'rb') as image_file:
-            raw = image_file.read(AI_IMAGE_MAX_DATA_URI_CHARS + 1)
-        if len(raw) > AI_IMAGE_MAX_DATA_URI_CHARS:
-            return image_value
-        content_type = mimetypes.guess_type(storage_name)[0] or 'image/png'
-        return f'data:{content_type};base64,{base64.b64encode(raw).decode("ascii")}'
-    except Exception:
+    found = image_store.read_url(image_value)
+    if not found:
         # The report is still useful if an old deployment already lost the
         # media file; retain its original URL and surface that health problem
         # to staff on the reports dashboard.
-        logger.warning('Could not snapshot reported AI image %s', storage_name)
+        logger.warning('Could not snapshot reported AI image %s', image_value)
         return image_value
+    raw, content_type = found
+    if len(raw) > AI_IMAGE_MAX_DATA_URI_CHARS:
+        return image_value
+    return f'data:{content_type};base64,{base64.b64encode(raw).decode("ascii")}'
 
 
 def ai_report_submit(request):

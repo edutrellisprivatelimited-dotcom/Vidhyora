@@ -1,0 +1,67 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Log in this device — {{ SITE_AI_BRAND_NAME|default:"Vidhyora" }} AI</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="same-origin">
+{% include "_ai_theme_head.html" %}
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:var(--font-body),system-ui,sans-serif;color:var(--text);background:var(--bg);line-height:1.6;min-height:100vh;display:flex;flex-direction:column;overflow-x:hidden}
+body::before{content:"";position:fixed;inset:-30vh -20vw auto;height:80vh;background:radial-gradient(closest-side,rgba(var(--accent-rgb),.22),transparent 70%);pointer-events:none;z-index:0}
+header,main,footer{position:relative;z-index:1}
+header{padding:1.1rem 1.25rem}
+.logo-txt{font-family:var(--font-head);font-size:1.2rem;font-weight:900;letter-spacing:-.03em;color:var(--head);text-decoration:none}
+.logo-txt span{color:var(--red)}
+main{flex:1;width:100%;max-width:460px;margin:0 auto;padding:1.5rem 1rem 3rem;display:flex;flex-direction:column;justify-content:center}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:1.6rem 1.5rem;box-shadow:0 24px 60px rgba(0,0,0,.12);text-align:center}
+.icon{width:72px;height:72px;margin:0 auto 1rem;border-radius:50%;background:linear-gradient(135deg,var(--red),var(--red-dark));color:#fff;display:flex;align-items:center;justify-content:center;font-size:1.7rem;box-shadow:0 16px 34px rgba(var(--accent-rgb),.3)}
+.icon.muted{background:var(--bg-alt);color:var(--text);border:1px solid var(--line);box-shadow:none}
+h1{font-family:var(--font-head);font-size:1.35rem;font-weight:800;color:var(--head);letter-spacing:-.02em;line-height:1.25}
+p{font-size:.9rem;margin:.5rem 0 1.2rem}
+.who{display:flex;align-items:center;justify-content:center;gap:.55rem;background:var(--bg-alt);border:1px solid var(--line);border-radius:12px;padding:.6rem .8rem;margin:0 0 1.2rem;font-size:.88rem;font-weight:700;color:var(--head);word-break:break-all}
+.who i{color:var(--red)}
+.btn{width:100%;display:inline-flex;align-items:center;justify-content:center;gap:.5rem;border:none;border-radius:12px;font:inherit;font-weight:800;font-size:.95rem;padding:.85rem 1rem;cursor:pointer;text-decoration:none;background:linear-gradient(135deg,var(--red),var(--red-dark));color:#fff;box-shadow:0 12px 26px rgba(var(--accent-rgb),.28)}
+.btn:disabled{opacity:.6;cursor:default}
+.note{font-size:.76rem;margin:.9rem 0 0}
+footer{text-align:center;padding:1.5rem 1rem;font-size:.78rem}
+</style>
+</head>
+<body>
+<header><a href="/" class="logo-txt">{{ SITE_AI_BRAND_NAME|default:"Vidhyora" }} <span>AI</span></a></header>
+<main>
+  <div class="card">
+  {% if state == 'open' %}
+    <div class="icon"><i class="fas fa-mobile-screen-button"></i></div>
+    <h1>Log in on this device?</h1>
+    <p>This device will be added to the account below and stay logged in.</p>
+    <div class="who"><i class="fas fa-user"></i><span>{{ email }}</span></div>
+    <form method="post" onsubmit="this.querySelector('button').disabled=true">{% csrf_token %}
+      <button type="submit" class="btn"><i class="fas fa-right-to-bracket"></i> Log in on this device</button>
+    </form>
+    <p class="note">Only open this on a device you trust. The link works once and expires at {{ expires_at|time:"g:i A" }}.</p>
+  {% elif state == 'done' %}
+    <div class="icon"><i class="fas fa-check"></i></div>
+    <h1>This device is logged in</h1>
+    <div class="who" style="margin-top:1rem"><i class="fas fa-user"></i><span>{{ email }}</span></div>
+    <a href="/" class="btn" id="goIn">Start chatting <i class="fas fa-arrow-right"></i></a>
+    <script>setTimeout(function(){ location.href = '/'; }, 2000);</script>
+  {% elif state == 'already' %}
+    <div class="icon"><i class="fas fa-circle-check"></i></div>
+    <h1>This device is already logged in</h1>
+    <p>Open this link on the other device you want to add.</p>
+    <a href="/" class="btn"><i class="fas fa-robot"></i> Go to {{ SITE_AI_BRAND_NAME|default:"Vidhyora" }} AI</a>
+  {% else %}
+    <div class="icon muted"><i class="fas fa-link-slash"></i></div>
+    <h1>This link can't be used</h1>
+    <p>{{ message }}</p>
+    <a href="/" class="btn"><i class="fas fa-robot"></i> Go to {{ SITE_AI_BRAND_NAME|default:"Vidhyora" }} AI</a>
+  {% endif %}
+  </div>
+</main>
+<footer>&copy; {% now "Y" %} {{ SITE_AI_BRAND_NAME|default:"Vidhyora" }} AI</footer>
+</body>
+</html>

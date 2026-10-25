@@ -57,6 +57,9 @@
 .dbx-facts li:last-child{border-bottom:none}
 .dbx-facts i{width:16px;text-align:center;color:#3b5bdb;margin-top:.2rem}
 .dbx-facts b{color:var(--head)}
+.dbx-tree{display:flex;flex-wrap:wrap;gap:.3rem;margin:.35rem 0 .15rem}
+.dbx-tree code{font-size:.72rem;padding:.1rem .45rem;border-radius:6px;background:var(--bg-alt,#f4f6fb);border:1px solid var(--line);color:var(--head)}
+.dbx-tree-note{display:block;font-size:.72rem;color:var(--text);opacity:.85}
 .dbx-meter{height:6px;border-radius:50px;background:var(--line);overflow:hidden;margin-top:.35rem}
 .dbx-meter span{display:block;height:100%;background:#3b5bdb;border-radius:50px}
 .dbx-alert{border-radius:12px;padding:.8rem 1rem;font-size:.82rem;margin-bottom:1rem;background:#fdeaea;color:#a4162f;line-height:1.5}
@@ -132,7 +135,11 @@ a.btn[aria-disabled="true"]{opacity:.5;pointer-events:none}
         </div>
       </div>
       <ul class="dbx-facts">
-        <li><i class="fas fa-folder-open"></i> <span>Backups folder: <b>{{ backup_folder }}/</b></span></li>
+        <li><i class="fas fa-folder-open"></i> <span>Dropbox folder: <b>{{ dropbox_root }}/</b>
+          <span class="dbx-tree">{% for sub in dropbox_subfolders %}<code>{{ sub }}/</code>{% endfor %}</span>
+          <small class="dbx-tree-note">Named after the AI name on the Customize page. Renaming the AI moves the folder too.</small></span></li>
+        <li><i class="fas fa-images"></i> <span>AI images in Dropbox: <b>{{ image_summary.in_dropbox }}</b>{% if image_summary.waiting %} · {{ image_summary.waiting }} uploading{% endif %}{% if image_summary.older %} · {{ image_summary.older }} older ones being moved{% endif %}
+          <small class="dbx-tree-note">Saved as compressed WebP. People see and download them from this site; Dropbox links are never shown.</small></span></li>
         {% if connected and account.allocated and account.used is not None %}
         <li><i class="fas fa-hard-drive"></i> <span>Space used: <b>{{ account.used|filesizeformat }}</b> of {{ account.allocated|filesizeformat }}
           <div class="dbx-meter"><span style="width:{% widthratio account.used account.allocated 100 %}%"></span></div></span></li>
@@ -220,6 +227,7 @@ document.querySelectorAll('[data-reveal]').forEach(function(button){
       <ul class="backup-facts">
         <li><i class="fas fa-folder"></i> Saves a timestamped copy to <code>{{ backup_folder }}/</code></li>
         <li><i class="fas fa-file-circle-check"></i> Includes the PWA install icon, favicon, social preview, and other uploaded site images in one ZIP. Uploads once and updates <code>latest.json</code>.</li>
+        <li><i class="fas fa-images"></i> AI-generated images aren't in the ZIP: each one is saved straight to <code>{{ dropbox_root }}/AI Images/</code> when it's made.</li>
         <li><i class="fas fa-shield-halved"></i> Backups made with "Backup Now" are kept until you delete them</li>
       </ul>
       <div class="auto-backup">

@@ -6,12 +6,7 @@ from django.core.exceptions import MiddlewareNotUsed
 from django.http import Http404, HttpResponse, HttpResponsePermanentRedirect, JsonResponse
 from django.shortcuts import render
 
-from django.contrib.auth import logout
-from django.contrib.sessions.models import Session
-from django.utils import timezone
-
-from .models import ActiveUserSession
-from .single_device import register_active_session
+from .devices import register_device, touch_device
 
 logger = logging.getLogger(__name__)
 
@@ -62,8 +57,15 @@ class FriendlyErrorMiddleware:
             # Only the site owner sees what broke, so a problem can be fixed
             # without reading the server log. Visitors never get this.
             context['error_detail'] = ''.join(traceback.format_exception(exception))[-4000:]
+        template = '404.html' if status == 404 else '500.html'
+        if status == 403:
+            # Usually a form sent from a page left open too long (CSRF).
+            template = 'error.html'
+            context.update(error_code='403', error_title="That didn't go through",
+                           error_message='This page may have been open for too long. Reload it and try again.',
+                           error_retry=True)
         try:
-            return render(request, '404.html' if status == 404 else '500.html', context, status=status)
+            return render(request, template, context, status=status)
         except Exception:
             # The page itself could not be built (say the database is down):
             # a bare message still beats Django's developer page.
@@ -163,38 +165,22 @@ class HideAdminFromNonStaffMiddleware:
 
 
 class SingleDeviceSessionMiddleware:
-    """Log out a browser when a newer login has claimed the same account."""
+    """Keeps each logged-in browser listed as one of its account's devices
+    (see myapp.devices). A device logged out from elsewhere has lost its
+    session, so it never gets here as a logged-in user."""
 
     def __init__(self, get_response):
         self.get_response = get_response
 
     def __call__(self, request):
         if request.user.is_authenticated:
-            current_key = request.session.session_key
-            active = ActiveUserSession.objects.filter(user=request.user).first()
-
-            if not current_key:
+            if not request.session.session_key:
                 request.session.save()
-                register_active_session(request.user, request.session.session_key)
-            elif active is None:
-                # Covers accounts that were already logged in when this
-                # feature was deployed: their current browser gets the slot.
-                register_active_session(request.user, current_key)
-            elif active.session_key != current_key:
-                active_session_still_valid = Session.objects.filter(
-                    session_key=active.session_key,
-                    expire_date__gt=timezone.now(),
-                ).exists()
-                if active_session_still_valid:
-                    # The active key belongs to the newer device. Django's
-                    # logout also clears this browser's stale auth cookie.
-                    logout(request)
-                else:
-                    # A normal session-key rotation (for example after a
-                    # password change) or an expired record may leave the
-                    # database pointer stale; safely let the only live
-                    # authenticated session reclaim it.
-                    register_active_session(request.user, current_key)
+                register_device(request.user, request.session.session_key, request)
+            elif not touch_device(request.user, request.session.session_key):
+                # Logged in before devices were listed, or its session key
+                # changed since (e.g. after a password change).
+                register_device(request.user, request.session.session_key, request)
 
         return self.get_response(request)
 

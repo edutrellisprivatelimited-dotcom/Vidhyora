@@ -29,11 +29,11 @@ from pypdf import PdfReader
 
 from . import (
     ai_chat, business_info, company_knowledge, doc_extract, dropbox_backup,
-    dropbox_images, file_convert, image_generation, privacy, request_router,
-    web_search,
+    dropbox_images, file_convert, image_generation, image_store, privacy,
+    request_router, web_search,
 )
 from .middleware import CanonicalHostMiddleware, PublicAssetCacheMiddleware
-from .models import ActiveUserSession, AIAccountMessageSettings, DropboxSettings, AIAPIAccess, AIAPIKey, AIGeneratedFile, AIBlock, AIConversation, AIMessage, AINote, AIReport, AIUserImage, GitHubConnection, Order, Payment, PWASettings, SiteCustomization, StoreProfile
+from .models import ActiveUserSession, AIAccountMessageSettings, DropboxSettings, AIAPIAccess, AIAPIKey, AIGeneratedFile, AIBlock, AIConversation, AIMessage, AINote, AIReport, AIUserImage, GitHubConnection, Order, Payment, PWASettings, SiteCustomization, StoredImage, StoreProfile
 from .views import (
     AI_CURRENT_CONVERSATION_SESSION_KEY, AI_FREE_MESSAGE_LIMIT,
     _ai_document_instruction,
@@ -176,9 +176,10 @@ class SingleDeviceLoginTests(TestCase):
         self.assertFalse(ActiveUserSession.objects.filter(user=self.user).exists())
 
     def test_django_admin_login_uses_the_same_single_device_slot(self):
+        # Staff who aren't superusers keep the one-device rule (superusers:
+        # see myapp.test_devices).
         self.user.is_staff = True
-        self.user.is_superuser = True
-        self.user.save(update_fields=['is_staff', 'is_superuser'])
+        self.user.save(update_fields=['is_staff'])
         ai_device = self.client_class()
         admin_device = self.client_class()
         self.assertEqual(self._login(ai_device).status_code, 200)
@@ -299,11 +300,12 @@ class NVIDIAImageGenerationTests(TestCase):
             username='flux-tests@example.com', password='test-password-123', is_staff=True,
         )
         self.client.force_login(self.user)
+        self.media = tempfile.TemporaryDirectory()
+        self.addCleanup(self.media.cleanup)
+        self.enterContext(override_settings(MEDIA_ROOT=self.media.name))
 
-    @patch('myapp.views.default_storage.url', return_value='/media/ai_generated/result.png')
-    @patch('myapp.views.default_storage.save', return_value='ai_generated/result.png')
     @patch('myapp.views.image_generation.generate_image')
-    def test_flux_chat_turn_saves_and_returns_generated_image(self, generate, save, storage_url):
+    def test_flux_chat_turn_saves_and_returns_generated_image(self, generate):
         generate.return_value = image_generation.GeneratedImage(self.PNG_BYTES, 'png')
 
         response = self.client.post(
@@ -317,15 +319,18 @@ class NVIDIAImageGenerationTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content.decode(), '')
-        self.assertEqual(response['X-Generated-Image-Url'], '/media/ai_generated/result.png')
+        stored = StoredImage.objects.get()
+        result_url = image_store.url_for(stored)
+        self.assertRegex(result_url, r'^/AI/images/[A-Za-z0-9_-]+\.webp$')
+        self.assertEqual(response['X-Generated-Image-Url'], result_url)
         self.assertEqual(response['X-Request-Category'], 'image_generation')
         generate.assert_called_once_with('A futuristic EduTrellis AI robot', None)
         assistant = AIMessage.objects.get(role=AIMessage.ROLE_ASSISTANT)
         self.assertEqual(assistant.model_key, ai_chat.FLUX_KLEIN_4B_MODEL_KEY)
-        self.assertEqual(assistant.image_data, '/media/ai_generated/result.png')
+        self.assertEqual(assistant.image_data, result_url)
 
         history = self.client.get(f'/AI/api/conversations/{assistant.conversation_id}/').json()
-        self.assertEqual(history['messages'][-1]['image_data'], '/media/ai_generated/result.png')
+        self.assertEqual(history['messages'][-1]['image_data'], result_url)
 
     @patch('myapp.views.default_storage.url', return_value='/media/ai_generated/edited.png')
     @patch('myapp.views.default_storage.save', return_value='ai_generated/edited.png')
@@ -753,13 +758,12 @@ class ImageGallerySurvivesChatDeletionTests(TestCase):
         )
         StoreProfile.objects.get_or_create(user=self.user)
         self.client.force_login(self.user)
+        self.media = tempfile.TemporaryDirectory()
+        self.addCleanup(self.media.cleanup)
+        self.enterContext(override_settings(MEDIA_ROOT=self.media.name))
 
-    @patch('myapp.views.default_storage.url', return_value='/media/ai_generated/kept.png')
-    @patch('myapp.views.default_storage.save', return_value='ai_generated/kept.png')
     @patch('myapp.views.image_generation.generate_image')
-    def test_image_stays_in_the_gallery_after_its_chat_is_deleted(
-        self, generate, save, storage_url,
-    ):
+    def test_image_stays_in_the_gallery_after_its_chat_is_deleted(self, generate):
         generate.return_value = image_generation.GeneratedImage(self.PNG_BYTES, 'png')
         send = self.client.post(
             '/AI/api/send/',
@@ -772,8 +776,10 @@ class ImageGallerySurvivesChatDeletionTests(TestCase):
         self.assertEqual(send.status_code, 200)
         conversation_id = int(send['X-Conversation-Id'])
 
+        kept = image_store.url_for(StoredImage.objects.get())
+        self.assertEqual(send['X-Generated-Image-Url'], kept)
         gallery = self.client.get('/AI/api/account/').json()['images']
-        self.assertEqual([i['url'] for i in gallery], ['/media/ai_generated/kept.png'])
+        self.assertEqual([i['url'] for i in gallery], [kept])
 
         delete = self.client.post(f'/AI/api/conversations/{conversation_id}/delete/')
         self.assertEqual(delete.status_code, 200)
@@ -781,7 +787,7 @@ class ImageGallerySurvivesChatDeletionTests(TestCase):
 
         # The whole point: the picture is still there.
         after = self.client.get('/AI/api/account/').json()['images']
-        self.assertEqual([i['url'] for i in after], ['/media/ai_generated/kept.png'])
+        self.assertEqual([i['url'] for i in after], [kept])
         self.assertEqual(after[0]['prompt'], 'a calm blue lake')
         # ...and it no longer points at a chat that does not exist.
         self.assertIsNone(after[0]['conversation_id'])
@@ -1422,7 +1428,7 @@ class DropboxArchiveIsOffDuringTestsTests(TestCase):
 
     def test_a_test_run_cannot_queue_an_upload_with_the_real_credentials(self):
         with patch('myapp.dropbox_images._ensure_worker') as worker:
-            self.assertFalse(dropbox_images.enqueue(b'bytes', 'png', 'real@example.com'))
+            self.assertFalse(dropbox_images.enqueue_stored_image(1))
             self.assertEqual(
                 dropbox_images.enqueue_report_images(
                     1, 'real@example.com', user_image='data:image/png;base64,AA==',
@@ -1437,330 +1443,6 @@ class DropboxArchiveIsOffDuringTestsTests(TestCase):
         # trusting the decision made when the item was queued.
         with patch('myapp.dropbox_images.is_configured', return_value=True):
             self.assertIsNone(dropbox_images._build_client())
-
-
-@override_settings(
-    DROPBOX_IMAGE_ARCHIVE_ENABLED=True,
-    DROPBOX_APP_KEY='test-key',
-    DROPBOX_APP_SECRET='test-secret',
-    DROPBOX_REFRESH_TOKEN='test-refresh-token',
-)
-class DropboxGeneratedImageArchiveTests(TestCase):
-    """Generated images are mirrored to /vidhyora/<email>/ without delaying the reply."""
-
-    PNG_BYTES = base64.b64decode(
-        b'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
-    )
-
-    def setUp(self):
-        cache.clear()
-        # Module-level worker state survives between tests; start each one from
-        # a drained queue and no cached client so assertions can't pick up a
-        # previous test's upload.
-        dropbox_images.flush(timeout=5)
-        dropbox_images._client = None
-        self.user = User.objects.create_user(
-            username='archive-tests',
-            email='Studio.Owner+AI@Example.com',
-            password='test-password-123',
-            is_staff=True,
-        )
-        self.client.force_login(self.user)
-
-    def test_folder_name_is_lowercased_and_stripped_of_path_characters(self):
-        # Dropbox rejects these characters outright in a path component, and
-        # an unsanitised one would send the upload to a different folder.
-        self.assertEqual(dropbox_images.folder_for('User@Example.com'), 'user@example.com')
-        self.assertEqual(dropbox_images.folder_for('a/b\\c:d?e*f'), 'a_b_c_d_e_f')
-        self.assertEqual(dropbox_images.folder_for('  spaced@x.com  '), 'spaced@x.com')
-
-    def test_missing_email_falls_back_to_the_shared_guest_folder(self):
-        # Guests can generate images too — they still get archived, just not
-        # filed under an address that does not exist.
-        for empty in ('', None, '   ', '...'):
-            self.assertEqual(dropbox_images.folder_for(empty), dropbox_images.GUEST_FOLDER)
-
-    def test_filename_is_sortable_and_keeps_the_local_storage_name(self):
-        name = dropbox_images._filename('png', 'ai_generated/2026/09/05/abc123.png')
-
-        self.assertTrue(name.endswith('-abc123.png'))
-        # Leading YYYYMMDD-HHMMSS stamp, so a Dropbox folder listing sorts
-        # chronologically by name.
-        self.assertRegex(name, r'^\d{8}-\d{6}-')
-
-    def test_unexpected_extension_is_not_trusted_into_the_filename(self):
-        self.assertTrue(dropbox_images._filename('php', 'x.php').endswith('.png'))
-        self.assertTrue(dropbox_images._filename('JPG', 'x.jpg').endswith('.jpg'))
-
-    def test_enqueue_uploads_to_the_per_email_folder_under_vidhyora(self):
-        client = Mock()
-        with patch('myapp.dropbox_images._build_client', return_value=client):
-            self.assertTrue(
-                dropbox_images.enqueue(b'image-bytes', 'png', 'owner@example.com', 'local.png')
-            )
-            self.assertTrue(dropbox_images.flush(timeout=10))
-
-        client.files_upload.assert_called_once()
-        content, path = client.files_upload.call_args.args
-        self.assertEqual(content, b'image-bytes')
-        self.assertTrue(path.startswith('/vidhyora/owner@example.com/'))
-        self.assertTrue(path.endswith('-local.png'))
-
-    def test_upload_failures_are_swallowed_so_a_saved_image_is_never_lost(self):
-        client = Mock()
-        client.files_upload.side_effect = RuntimeError('Dropbox is down')
-        with patch('myapp.dropbox_images._build_client', return_value=client):
-            self.assertTrue(dropbox_images.enqueue(b'bytes', 'png', 'owner@example.com'))
-            self.assertTrue(dropbox_images.flush(timeout=10))
-
-        # A failed upload must also drop the cached client, so the next image
-        # rebuilds one instead of reusing a possibly-broken connection.
-        self.assertIsNone(dropbox_images._client)
-
-    @override_settings(DROPBOX_REFRESH_TOKEN='')
-    def test_incomplete_credentials_skip_the_upload_entirely(self):
-        with patch('myapp.dropbox_images._build_client') as build:
-            self.assertFalse(dropbox_images.enqueue(b'bytes', 'png', 'owner@example.com'))
-
-        build.assert_not_called()
-
-    @patch('myapp.views.default_storage.url', return_value='/media/ai_generated/robot.png')
-    @patch('myapp.views.default_storage.save', return_value='ai_generated/2026/09/05/robot.png')
-    @patch('myapp.views.image_generation.generate_image')
-    def test_generated_image_is_archived_under_the_logged_in_users_email(
-        self, generate, save, storage_url,
-    ):
-        generate.return_value = image_generation.GeneratedImage(self.PNG_BYTES, 'png')
-        client = Mock()
-
-        with patch('myapp.dropbox_images._build_client', return_value=client):
-            response = self.client.post(
-                '/AI/api/send/',
-                data=json.dumps({
-                    'message': 'A futuristic learning robot',
-                    'model': ai_chat.FLUX_KLEIN_4B_MODEL_KEY,
-                }),
-                content_type='application/json',
-            )
-            self.assertTrue(dropbox_images.flush(timeout=10))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response['X-Generated-Image-Url'], '/media/ai_generated/robot.png')
-
-        content, path = client.files_upload.call_args.args
-        self.assertEqual(content, self.PNG_BYTES)
-        # The email is normalised to lowercase, so one person never ends up
-        # with two archive folders.
-        self.assertTrue(path.startswith('/vidhyora/studio.owner+ai@example.com/'))
-        self.assertTrue(path.endswith('-robot.png'))
-
-    @patch('myapp.views.default_storage.url', return_value='/media/ai_generated/guest.png')
-    @patch('myapp.views.default_storage.save', return_value='ai_generated/guest.png')
-    @patch('myapp.views.image_generation.generate_image')
-    def test_account_without_an_email_still_gets_its_image_archived(
-        self, generate, save, storage_url,
-    ):
-        # An account can exist with a blank email (staff-created ones here do),
-        # so the folder fallback has to cover logged-in users too, not just
-        # guests — otherwise those images would go to '/vidhyora//...'.
-        generate.return_value = image_generation.GeneratedImage(self.PNG_BYTES, 'png')
-        no_email = User.objects.create_user(
-            username='no-email-account', password='test-password-123', is_staff=True,
-        )
-        self.client.force_login(no_email)
-        client = Mock()
-
-        with patch('myapp.dropbox_images._build_client', return_value=client):
-            response = self.client.post(
-                '/AI/api/send/',
-                data=json.dumps({
-                    'message': 'A blue mountain',
-                    'model': ai_chat.FLUX_KLEIN_4B_MODEL_KEY,
-                }),
-                content_type='application/json',
-            )
-            self.assertTrue(dropbox_images.flush(timeout=10))
-
-        self.assertEqual(response.status_code, 200)
-        _, path = client.files_upload.call_args.args
-        self.assertTrue(path.startswith(f'/vidhyora/{dropbox_images.GUEST_FOLDER}/'))
-
-    @patch('myapp.views.default_storage.url', return_value='/media/ai_generated/x.png')
-    @patch('myapp.views.default_storage.save', return_value='ai_generated/x.png')
-    @patch('myapp.views.image_generation.generate_image')
-    def test_a_broken_dropbox_still_returns_the_image_to_the_user(
-        self, generate, save, storage_url,
-    ):
-        generate.return_value = image_generation.GeneratedImage(self.PNG_BYTES, 'png')
-
-        # The archive is a mirror, not the delivery path. Break it as badly as
-        # possible — the real (unmocked) enqueue runs here, so this proves its
-        # own error handling is what protects the reply, not the caller's.
-        with patch('myapp.dropbox_images._ensure_worker', side_effect=RuntimeError('boom')):
-            response = self.client.post(
-                '/AI/api/send/',
-                data=json.dumps({
-                    'message': 'A red car',
-                    'model': ai_chat.FLUX_KLEIN_4B_MODEL_KEY,
-                }),
-                content_type='application/json',
-            )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response['X-Generated-Image-Url'], '/media/ai_generated/x.png')
-        self.assertEqual(
-            AIMessage.objects.get(role=AIMessage.ROLE_ASSISTANT).image_data,
-            '/media/ai_generated/x.png',
-        )
-
-    def test_enqueue_never_raises_even_when_the_worker_cannot_start(self):
-        with patch('myapp.dropbox_images._ensure_worker', side_effect=RuntimeError('no threads')):
-            self.assertFalse(dropbox_images.enqueue(b'bytes', 'png', 'owner@example.com'))
-
-    def _data_uri(self):
-        return 'data:image/png;base64,' + base64.b64encode(self.PNG_BYTES).decode('ascii')
-
-    def test_report_evidence_is_archived_under_the_reporters_reports_folder(self):
-        client = Mock()
-        with patch('myapp.dropbox_images._build_client', return_value=client):
-            queued = dropbox_images.enqueue_report_images(
-                42, 'Owner@Example.com',
-                user_image=self._data_uri(), reply_image=self._data_uri(),
-            )
-            self.assertTrue(dropbox_images.flush(timeout=10))
-
-        self.assertEqual(queued, 2)
-        paths = sorted(call.args[1] for call in client.files_upload.call_args_list)
-        self.assertEqual(len(paths), 2)
-        for path in paths:
-            self.assertTrue(path.startswith('/vidhyora/owner@example.com/reports/'))
-        # Named by report number and side, so a reviewer can find the evidence
-        # for report #42 without opening every file in the folder.
-        self.assertTrue(paths[0].endswith('-report-42-reply.png'))
-        self.assertTrue(paths[1].endswith('-report-42-user.png'))
-
-    def test_report_evidence_data_uri_is_decoded_to_the_original_image_bytes(self):
-        client = Mock()
-        with patch('myapp.dropbox_images._build_client', return_value=client):
-            dropbox_images.enqueue_report_images(7, 'owner@example.com', user_image=self._data_uri())
-            self.assertTrue(dropbox_images.flush(timeout=10))
-
-        # A real PNG must land in Dropbox, not the base64 text of one.
-        content = client.files_upload.call_args.args[0]
-        self.assertEqual(content, self.PNG_BYTES)
-        self.assertTrue(content.startswith(b'\x89PNG'))
-
-    def test_report_evidence_that_is_only_a_url_is_skipped_not_uploaded(self):
-        # _snapshot_ai_report_image falls back to the bare media URL when the
-        # file is already gone. There are no bytes behind that, so uploading it
-        # would just create a file containing a URL.
-        client = Mock()
-        with patch('myapp.dropbox_images._build_client', return_value=client):
-            queued = dropbox_images.enqueue_report_images(
-                9, 'owner@example.com',
-                user_image='/media/ai_generated/lost.png', reply_image='',
-            )
-            self.assertTrue(dropbox_images.flush(timeout=10))
-
-        self.assertEqual(queued, 0)
-        client.files_upload.assert_not_called()
-
-    def test_corrupt_report_evidence_never_uploads_an_empty_file(self):
-        client = Mock()
-        with patch('myapp.dropbox_images._build_client', return_value=client):
-            dropbox_images.enqueue_report_images(
-                11, 'owner@example.com', user_image='data:image/png;base64,!!!not base64!!!',
-            )
-            self.assertTrue(dropbox_images.flush(timeout=10))
-
-        client.files_upload.assert_not_called()
-
-    def test_jpeg_report_evidence_keeps_a_usable_file_extension(self):
-        client = Mock()
-        with patch('myapp.dropbox_images._build_client', return_value=client):
-            dropbox_images.enqueue_report_images(
-                3, 'owner@example.com',
-                user_image='data:image/jpeg;base64,' + base64.b64encode(b'\xff\xd8\xff-jpeg').decode(),
-            )
-            self.assertTrue(dropbox_images.flush(timeout=10))
-
-        self.assertTrue(client.files_upload.call_args.args[1].endswith('.jpg'))
-
-    def test_submitting_a_report_archives_its_image_evidence(self):
-        conversation = AIConversation.objects.create(user=self.user, title='Report archive')
-        AIMessage.objects.create(
-            conversation=conversation, role=AIMessage.ROLE_USER,
-            content='Make this poster blue', image_data=self._data_uri(),
-        )
-        assistant = AIMessage.objects.create(
-            conversation=conversation, role=AIMessage.ROLE_ASSISTANT,
-            content='', image_data=self._data_uri(),
-            model_key=ai_chat.FLUX_KLEIN_4B_MODEL_KEY,
-        )
-        client = Mock()
-
-        with patch('myapp.dropbox_images._build_client', return_value=client):
-            response = self.client.post(
-                '/AI/api/report/',
-                data=json.dumps({
-                    'conversation_id': conversation.id,
-                    'message_id': assistant.pk,
-                    'reply_image': assistant.image_data,
-                    'explanation': 'The poster came out the wrong colour.',
-                }),
-                content_type='application/json',
-            )
-            self.assertTrue(dropbox_images.flush(timeout=10))
-
-        self.assertEqual(response.status_code, 200)
-        report = AIReport.objects.get()
-        paths = sorted(call.args[1] for call in client.files_upload.call_args_list)
-        self.assertEqual(len(paths), 2, f'expected both sides archived, got {paths}')
-        for path in paths:
-            self.assertTrue(
-                path.startswith('/vidhyora/studio.owner+ai@example.com/reports/'), path,
-            )
-        self.assertTrue(paths[0].endswith(f'-report-{report.pk}-reply.png'))
-        self.assertTrue(paths[1].endswith(f'-report-{report.pk}-user.png'))
-
-    def test_a_broken_dropbox_still_lets_a_report_be_filed(self):
-        conversation = AIConversation.objects.create(user=self.user, title='Report resilience')
-        AIMessage.objects.create(
-            conversation=conversation, role=AIMessage.ROLE_USER, content='Why is this wrong?',
-        )
-        assistant = AIMessage.objects.create(
-            conversation=conversation, role=AIMessage.ROLE_ASSISTANT,
-            content='A wrong answer.', model_key=ai_chat.CHATGPT_56_MODEL_KEY,
-        )
-
-        with patch('myapp.dropbox_images._ensure_worker', side_effect=RuntimeError('boom')):
-            response = self.client.post(
-                '/AI/api/report/',
-                data=json.dumps({
-                    'conversation_id': conversation.id,
-                    'message_id': assistant.pk,
-                    'reply_text': 'A wrong answer.',
-                    'explanation': 'This is not correct.',
-                }),
-                content_type='application/json',
-            )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(AIReport.objects.count(), 1)
-
-    def test_image_archive_folder_cannot_collide_with_the_database_backup_folder(self):
-        # dropbox_backup.py writes db.sqlite3 snapshots to its own root. If
-        # these two ever shared a folder, delete_all_backups() would wipe the
-        # users' generated images along with the backups.
-        self.assertNotEqual(
-            dropbox_images.ROOT_FOLDER.lower().rstrip('/'),
-            dropbox_backup.BACKUP_ROOT.lower().rstrip('/'),
-        )
-        self.assertFalse(
-            dropbox_backup.BACKUP_FOLDER.lower().startswith(
-                dropbox_images.ROOT_FOLDER.lower().rstrip('/') + '/'
-            )
-        )
 
 
 class AIResponseReliabilityTests(TestCase):
@@ -3553,7 +3235,8 @@ class AIAccountProfileTests(TestCase):
 
         self.assertContains(response, 'Edit profile')
         self.assertContains(response, 'Upload profile image')
-        self.assertContains(response, 'Subscription details')
+        self.assertContains(response, 'data-account-panel="subscription"')
+        self.assertContains(response, 'Connected devices')
         self.assertContains(response, 'My reports')
         self.assertNotContains(response, '> Admin Panel</a>')
 
@@ -4643,11 +4326,12 @@ class DashboardBackupDeletionTests(TestCase):
         self.assertContains(response, 'Deleted 3 Dropbox backup items.')
 
     def test_helper_deletes_only_entries_inside_backup_folder_including_latest(self):
+        folder = dropbox_backup.backup_folder().lower()
         dbx = Mock()
         dbx.files_list_folder.return_value = SimpleNamespace(
             entries=[
-                SimpleNamespace(path_lower='/edutrellis store/backups/db_20260831.sqlite3'),
-                SimpleNamespace(path_lower='/edutrellis store/backups/db_latest.sqlite3'),
+                SimpleNamespace(path_lower=f'{folder}/vidhyora_backup_31-aug-2026.zip'),
+                SimpleNamespace(path_lower=f'{folder}/latest.json'),
                 SimpleNamespace(path_lower='/unrelated/never-delete.sqlite3'),
             ],
             has_more=False,
@@ -4658,8 +4342,8 @@ class DashboardBackupDeletionTests(TestCase):
 
         self.assertEqual(deleted, 2)
         self.assertEqual(dbx.files_delete_v2.call_count, 2)
-        dbx.files_delete_v2.assert_any_call('/edutrellis store/backups/db_20260831.sqlite3')
-        dbx.files_delete_v2.assert_any_call('/edutrellis store/backups/db_latest.sqlite3')
+        dbx.files_delete_v2.assert_any_call(f'{folder}/vidhyora_backup_31-aug-2026.zip')
+        dbx.files_delete_v2.assert_any_call(f'{folder}/latest.json')
 
 
 class RemovedPublicSurfaceTests(TestCase):
@@ -5016,16 +4700,42 @@ class ApiSettingsPanelsTests(TestCase):
         self.assertEqual(client_for_key.call_args.args[0], 'nvapi-terra')
         self.assertContains(response, 'API key saved — its numbers start from zero.')
 
-    def test_disabling_a_chatgpt_model_hides_and_blocks_it(self):
+    def test_disabling_a_chatgpt_model_hides_it_and_forwards_its_turns(self):
+        from .views import AI_REPLY_FORWARDED_MARK
         self.assertIn(ai_chat.TERRA_MODEL_KEY, self._picker())
         self.client.post(self.URL, {'panel': 'terra', 'action': 'save'})  # checkbox absent = off
         cache.clear()
         self.assertNotIn(ai_chat.TERRA_MODEL_KEY, self._picker())
-        send = self.client.post(
-            '/AI/api/send/', data=json.dumps({'message': 'hello', 'model': ai_chat.TERRA_MODEL_KEY}),
-            content_type='application/json',
-        )
-        self.assertEqual((send.status_code, send.json()['status']), (403, 'model_disabled'))
+        with patch('myapp.views.ai_chat.stream_chat', side_effect=lambda *a, **k: iter(['Hello!'])) as stream:
+            send = self.client.post(
+                '/AI/api/send/', data=json.dumps({'message': 'hello', 'model': ai_chat.TERRA_MODEL_KEY}),
+                content_type='application/json',
+            )
+            body = b''.join(send.streaming_content).decode()
+        self.assertEqual(send.status_code, 200)
+        self.assertEqual(send['X-Model-Key'], ai_chat.SOL_MODEL_KEY)
+        self.assertEqual(body, 'Hello!' + AI_REPLY_FORWARDED_MARK)
+        self.assertNotIn(AI_REPLY_FORWARDED_MARK, AIMessage.objects.filter(role=AIMessage.ROLE_ASSISTANT).get().content)
+        self.assertTrue(stream.call_args.kwargs['route']['forwarded'])
+
+    def test_a_reply_a_backup_model_gave_ends_with_the_forwarded_mark(self):
+        from .views import AI_REPLY_FORWARDED_MARK
+
+        def answered_by_a_backup(*args, route=None, **kwargs):
+            route['forwarded'] = True
+            yield 'From the backup.'
+
+        def answered_normally(*args, **kwargs):
+            yield 'From Sol.'
+
+        for stream, expected in ((answered_by_a_backup, 'From the backup.' + AI_REPLY_FORWARDED_MARK),
+                                 (answered_normally, 'From Sol.')):
+            with patch('myapp.views.ai_chat.stream_chat', side_effect=stream):
+                send = self.client.post(
+                    '/AI/api/send/', data=json.dumps({'message': 'hello', 'model': ai_chat.SOL_MODEL_KEY}),
+                    content_type='application/json',
+                )
+                self.assertEqual(b''.join(send.streaming_content).decode(), expected)
 
     def test_the_default_model_falls_back_when_sol_is_off(self):
         self.assertEqual(self.client.get('/').context['ai_default_model'], ai_chat.SOL_MODEL_KEY)
@@ -6361,7 +6071,9 @@ class DropboxStoragePanelTests(TestCase):
         body = self.client.get(self.URL).content.decode()
         self.assertIn('old@example.com', body)
         self.assertIn('Old Owner', body)
-        self.assertIn('/EduTrellis Store/backups/', body)
+        from myapp import dropbox_layout
+        self.assertIn(f'{dropbox_layout.root()}/</b>', body)
+        self.assertIn('<code>Backups/</code>', body)
         self.assertIn('backup_20260101_000000_000001.zip', body)
         self.assertIn('Connected', body)
         self.assertIn('built-in credentials', body)
@@ -6561,12 +6273,12 @@ class DropboxImageArchiveFollowsSavedCredentialsTests(TestCase):
 
     def test_changing_the_account_builds_a_new_client_for_the_next_upload(self):
         first, second = Mock(), Mock()
-        png = b'\x89PNG\r\n\x1a\n' + b'x' * 20
+        webp = b'RIFF\x00\x00\x00\x00WEBP' + b'x' * 20
         with patch('myapp.dropbox_images._build_client', side_effect=[first, second]) as build:
-            dropbox_images._upload(png, 'a@example.com', 'one.png')
+            dropbox_images.upload_bytes(webp, '/Vidhyora/AI Images/a@example.com/2026-10/one.webp')
             DropboxSettings.objects.update_or_create(pk=1, defaults={'refresh_token': 'other-token'})
             dropbox_images.reset_credentials()
-            dropbox_images._upload(png, 'a@example.com', 'two.png')
+            dropbox_images.upload_bytes(webp, '/Vidhyora/AI Images/a@example.com/2026-10/two.webp')
         self.assertEqual(build.call_count, 2)
         first.files_upload.assert_called_once()
         second.files_upload.assert_called_once()

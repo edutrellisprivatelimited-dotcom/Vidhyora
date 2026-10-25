@@ -27,8 +27,9 @@ try:
 except ImportError:  # pragma: no cover - optional dependency until configured
     dropbox = None
 
-BACKUP_ROOT = '/EduTrellis Store'
-BACKUP_FOLDER = f'{BACKUP_ROOT}/backups'
+from myapp import dropbox_layout
+
+# Backups live in "/<AI name>/Backups" (see myapp.dropbox_layout).
 LATEST_NAME = 'db_latest.sqlite3'
 LATEST_BUNDLE_NAME = 'backup_latest.zip'
 # Backups are named "<AI name>_Backup_<date>_<time>.zip", e.g.
@@ -40,28 +41,20 @@ LATEST_BUNDLE_NAME = 'backup_latest.zip'
 # "auto_backup_<stamp>.zip" and "backup_<stamp>.zip".
 AUTO_MARK = '_Auto-Backup_'
 LEGACY_AUTO_PREFIX = 'auto_backup_'
-DEFAULT_BRAND = 'Vidhyora'
 
 
 def is_automatic(name):
     return name.startswith(LEGACY_AUTO_PREFIX) or AUTO_MARK in name
 
 
-def _brand_for_file():
-    """The AI name from the Customize page, made safe for a file name."""
-    from myapp.models import SiteCustomization
-    try:
-        brand = SiteCustomization.get_solo().ai_brand_name or ''
-    except Exception:  # e.g. a restored database from before that setting existed
-        brand = ''
-    brand = re.sub(r'[^A-Za-z0-9-]+', '-', brand).strip('-')[:40]
-    return brand or DEFAULT_BRAND
+def backup_folder():
+    return dropbox_layout.backups_folder()
 
 
 def backup_filename(automatic=False, when=None):
     when = timezone.localtime(when)
     kind = AUTO_MARK if automatic else '_Backup_'
-    return f'{_brand_for_file()}{kind}{when:%d-%b-%Y_%I-%M-%S-%p}.zip'
+    return f'{dropbox_layout.brand_name()}{kind}{when:%d-%b-%Y_%I-%M-%S-%p}.zip'
 logger = logging.getLogger(__name__)
 
 
@@ -251,7 +244,7 @@ def account_info(settings_obj, *, refresh=False):
     dbx = _client(settings_obj)
     info = {
         'name': '', 'email': '', 'used': None, 'allocated': None,
-        'limited': False, 'folder': BACKUP_FOLDER,
+        'limited': False, 'folder': backup_folder(),
     }
     try:
         account = dbx.users_get_current_account()
@@ -351,8 +344,10 @@ def create_backup(settings_obj, *, missing_images=None, progress=None, automatic
     say = progress or (lambda text: None)
     try:
         dbx = _client(settings_obj)
-        _ensure_folder(dbx, BACKUP_ROOT)
-        _ensure_folder(dbx, BACKUP_FOLDER)
+        root = dropbox_layout.sync_root(dbx)
+        remote_folder = backup_folder()
+        _ensure_folder(dbx, root)
+        _ensure_folder(dbx, remote_folder)
 
         path = db_path()
         if not path.exists():
@@ -383,12 +378,12 @@ def create_backup(settings_obj, *, missing_images=None, progress=None, automatic
             size = bundle_path.stat().st_size
             logger.info('Dropbox archive ready: %d bytes; starting upload', size)
             say(f'Uploading to Dropbox: 0 of {size // (1024 * 1024)} MB')
-            _upload_file(dbx, bundle_path, f'{BACKUP_FOLDER}/{filename}', dropbox.files.WriteMode.add, progress=say)
+            _upload_file(dbx, bundle_path, f'{remote_folder}/{filename}', dropbox.files.WriteMode.add, progress=say)
         # The timestamped bundle is the backup. A tiny pointer replaces two
         # redundant full uploads; restore always selects the actual bundle.
         try:
             dbx.files_upload(json.dumps({'filename': filename}).encode(),
-                             f'{BACKUP_FOLDER}/latest.json', mode=dropbox.files.WriteMode.overwrite)
+                             f'{remote_folder}/latest.json', mode=dropbox.files.WriteMode.overwrite)
         except Exception:
             logger.warning('Backup saved, but latest pointer could not be updated', exc_info=True)
         if automatic:
@@ -396,7 +391,7 @@ def create_backup(settings_obj, *, missing_images=None, progress=None, automatic
             try:
                 for entry in _folder_entries(dbx):
                     if is_automatic(entry.name) and entry.name != filename:
-                        dbx.files_delete_v2(f'{BACKUP_FOLDER}/{entry.name}')
+                        dbx.files_delete_v2(f'{remote_folder}/{entry.name}')
             except Exception:
                 logger.warning('Automatic backup saved, but an older one could not be removed', exc_info=True)
         forget_listing(settings_obj)
@@ -536,8 +531,9 @@ def list_backup_entries(settings_obj, *, refresh=False):
 
 def _folder_entries(dbx):
     """Everything inside the backup folder; empty when it doesn't exist yet."""
+    dropbox_layout.sync_root(dbx)
     try:
-        res = dbx.files_list_folder(BACKUP_FOLDER)
+        res = dbx.files_list_folder(backup_folder())
     except Exception as exc:
         if 'not_found' in str(exc).lower():
             return []
@@ -573,7 +569,7 @@ def delete_all_backups(settings_obj):
     try:
         dbx = _client(settings_obj)
         entries = _folder_entries(dbx)
-        folder_prefix = BACKUP_FOLDER.lower().rstrip('/') + '/'
+        folder_prefix = backup_folder().lower().rstrip('/') + '/'
         deleted = 0
         for entry in entries:
             path = getattr(entry, 'path_lower', '') or ''
@@ -596,7 +592,7 @@ def _backup_path(filename):
     that could point outside it."""
     if not filename or '/' in filename or '\\' in filename or filename in ('.', '..'):
         raise BackupError('Invalid backup filename.')
-    return f'{BACKUP_FOLDER}/{filename}'
+    return f'{backup_folder()}/{filename}'
 
 
 def _download(settings_obj, filename):
@@ -754,6 +750,14 @@ def _scheduler_loop():
             run_automatic_backup_if_due()
         except Exception:
             logger.warning('Automatic backup check failed; trying again later', exc_info=True)
+        # The same timer finishes AI-image uploads that didn't complete and
+        # moves images saved before they went to Dropbox, a few at a time.
+        try:
+            from myapp import image_store
+            image_store.upload_pending()
+            image_store.adopt_legacy()
+        except Exception:
+            logger.warning('AI image upload check failed; trying again later', exc_info=True)
         finally:
             from django.db import connection
             connection.close()

@@ -2,23 +2,25 @@ from django.contrib.auth.signals import user_logged_in, user_logged_out
 from django.db.models import F
 from django.dispatch import receiver
 
+from .devices import forget_device, register_device
 from .models import StoreProfile
-from .single_device import clear_active_session, register_active_session
 
 
 @receiver(user_logged_in)
-def claim_single_device_login(sender, request, user, **kwargs):
+def claim_device_login(sender, request, user, **kwargs):
     if request is None:
         return
     if not request.session.session_key:
         request.session.save()
-    register_active_session(user, request.session.session_key)
+    # myapp.device_links sets this while logging a device in with a link.
+    register_device(user, request.session.session_key, request,
+                    via_link=getattr(request, 'device_login_link', False))
     profile, _ = StoreProfile.objects.get_or_create(user=user)
     StoreProfile.objects.filter(pk=profile.pk).update(login_count=F('login_count') + 1)
 
 
 @receiver(user_logged_out)
-def release_single_device_login(sender, request, user, **kwargs):
+def release_device_login(sender, request, user, **kwargs):
     if request is None or user is None:
         return
-    clear_active_session(user, request.session.session_key)
+    forget_device(user, request.session.session_key)

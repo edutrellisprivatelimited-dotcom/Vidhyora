@@ -59,6 +59,10 @@ FALLBACK_ORDER = ('sol', 'terra', 'chatgpt56', 'quick')
 FALLBACK_FIRST_DELAYS = (2.0, 4.0)
 FALLBACK_NEXT_DELAYS = (2.0,)
 FALLBACK_TOTAL_SECONDS = 75.0
+# Past that time the hunt still goes on to the second and third model, so a
+# slow failure of the selected one does not end in "temporarily unavailable"
+# before any backup was asked.
+FALLBACK_MIN_BACKUPS = 2
 STREAM_TIMEOUT_DEFAULT = 15.0
 # A longer request budget for turns that were deliberately given a larger
 # max_tokens (coding, file generation, explicit "complete"/"detailed"
@@ -719,6 +723,9 @@ LANGUAGE_MENU = [
     (code, f'{native} ({name})', native, speech, group)
     for code, name, native, _own_script, speech, group in _MORE_LANGUAGES
 ]
+# (name in its own script, English name) for the language menu's tiles.
+LANGUAGE_NAMES = {'en': ('English', 'English'), 'hi': ('हिंदी', 'Hindi'), 'hinglish': ('Hinglish', 'Hindi + English')}
+LANGUAGE_NAMES.update({code: (native, name) for code, name, native, *_rest in _MORE_LANGUAGES})
 
 # A private easter egg for Rudra's wife — the phrase is checked case- and
 # whitespace-insensitively against every message (see is_sumudrika_trigger),
@@ -1932,24 +1939,30 @@ def _get_client(api_key_setting=None, base_url=None):
 
 
 _IMAGE_EDIT_DESCRIBE_SYSTEM = (
-    "You turn a photo into a dense visual description for a text-to-image "
-    "generator that cannot see the photo itself. Describe every visually "
-    "relevant detail — subjects, their appearance, pose, clothing, "
-    "expressions, objects, setting, background, lighting, and colours — in "
-    "one tight paragraph of plain prose. No preamble, no commentary, no "
-    "markdown, just the description."
+    "You turn a picture into a dense visual description for a text-to-image "
+    "generator that cannot see the picture itself. Describe what kind of "
+    "picture it is (photo, poster, flyer, logo, screenshot...), its layout from "
+    "top to bottom, every subject and object, people's appearance, pose and "
+    "clothing, the setting and background, lighting, colours and style. Quote "
+    "the words written on it exactly, in order. One tight paragraph of plain "
+    "prose: no preamble, no commentary, no markdown."
 )
 
 
-def describe_image_for_edit(source_image):
-    """One-shot, non-streaming vision call that turns an uploaded photo into
-    a plain-text description, so an edit request can fall back to pure
-    text-to-image generation (description + requested changes) when the
-    configured backend cannot actually edit an uploaded reference image.
-    Returns None on any failure — the caller decides how to handle that."""
+def describe_image_for_edit(source_image, timeout=25.0, deadline=None):
+    """One-shot vision call that turns an uploaded photo into a plain-text
+    description, so an edit request can fall back to pure text-to-image
+    generation (description + requested changes) when the configured backend
+    cannot actually edit an uploaded reference image (see myapp.image_edit).
+
+    Streamed: ``timeout`` is the longest wait for the next piece, so a slow
+    but working model is not cut off half way (the vision model often needs
+    more than 25 s for a whole description). Reading stops after ``deadline``
+    seconds with what has arrived. Returns None on any failure — the caller
+    decides how to handle that."""
+    pieces = None
     try:
-        client = _get_client()
-        response = client.chat.completions.create(
+        pieces = _stream_content(_get_client(), dict(
             model=MODELS['vision']['id'],
             messages=[
                 {'role': 'system', 'content': _IMAGE_EDIT_DESCRIBE_SYSTEM},
@@ -1959,14 +1972,23 @@ def describe_image_for_edit(source_image):
                 ]},
             ],
             temperature=0.2,
-            max_tokens=500,
-            stream=False,
-        )
-        text = (response.choices[0].message.content or '').strip()
-        return text or None
+            max_tokens=600,
+            stream=True,
+            timeout=timeout,
+        ))
+        started = time.perf_counter()
+        text = ''
+        for piece in pieces:
+            text += piece
+            if deadline and time.perf_counter() - started > deadline:
+                break
+        return text.strip() or None
     except Exception:
         logger.exception('Could not describe an uploaded image for a text-to-image fallback')
         return None
+    finally:
+        if pieces is not None:
+            pieces.close()
 
 
 def _is_transient_error(exc):
@@ -2037,8 +2059,11 @@ def _without_leading_reasoning(chunks):
     through, so ordinary replies are not slowed down. A reply that opens with
     <think> itself is left to _without_think."""
     pending = ''
-    mode = 'judge'  # then 'hold' (looks like reasoning) or 'pass'
+    mode = 'judge'  # then 'hold' (looks like reasoning), 'pass', or 'raw' (opened with <think>)
     for chunk in chunks:
+        if mode == 'raw':
+            yield chunk  # its </think> must reach _without_think untouched
+            continue
         if mode == 'pass':
             yield chunk.replace('</think>', '') if '</think>' in chunk else chunk
             continue
@@ -2059,7 +2084,7 @@ def _without_leading_reasoning(chunks):
             if '<think>'.startswith(opening[:7]) and len(opening) < 7:
                 continue  # could still be a <think> tag arriving in pieces
             if opening.startswith('<think>'):
-                mode = 'pass'
+                mode = 'raw'
                 yield pending
                 pending = ''
                 continue
@@ -2513,7 +2538,7 @@ def _stream_chat_impl(messages, model_key=DEFAULT_MODEL_KEY, identity_model_key=
                  sumudrika_greet=True, jagu=False, jagu_greet=True,
                  persona_farewell=False, language=DEFAULT_LANGUAGE,
                  document_instruction=None,
-                 max_tokens=None, onboarding_ask=False, power=DEFAULT_POWER):
+                 max_tokens=None, onboarding_ask=False, power=DEFAULT_POWER, route=None):
     """messages: [{role: 'user'|'assistant', content: str | list}, ...] — the
     caller's conversation so far, already trimmed/sanitized. 'content' is a
     plain string for text-only turns, or a list of OpenAI-style content
@@ -2544,6 +2569,8 @@ def _stream_chat_impl(messages, model_key=DEFAULT_MODEL_KEY, identity_model_key=
     name/location/Instagram alongside answering; the caller, not the model,
     is responsible for actually parsing/saving whatever they say next (see
     extract_onboarding_fields), same reasoning as the My Notes system.
+    route: an optional dict; route['forwarded'] is set to True when the
+    selected model was busy or down and a backup backend gave the reply.
     Yields text chunks as they arrive from the model."""
     # Refreshes MODELS' brand-suffixed labels (Ultra/Quick/Code/Vision) from
     # the dashboard setting and returns the current name, used below to
@@ -2953,6 +2980,9 @@ def _stream_chat_impl(messages, model_key=DEFAULT_MODEL_KEY, identity_model_key=
         yielded_any = False
         check_vision_opening, check_identity_opening = initial_vision_check, initial_identity_check
         backend_started = time.perf_counter()
+        # (With no backup at all, the same model is queued again — not forwarded.)
+        if route is not None and (b_cfg['id'], b_key) != (cfg['id'], api_key_setting):
+            route['forwarded'] = True
         try:
             for attempt in range(STREAM_RETRY_ATTEMPTS + len(delays) + 1):
                 yielded_any = False
@@ -3082,7 +3112,8 @@ def _stream_chat_impl(messages, model_key=DEFAULT_MODEL_KEY, identity_model_key=
                     time.sleep(rest[0])
                     backends.append((b_cfg, b_key, b_kwargs, b_thinking, rest[1:]))
             if (backend_index == len(backends) - 1
-                    or time.perf_counter() - request_started > FALLBACK_TOTAL_SECONDS):
+                    or (time.perf_counter() - request_started > FALLBACK_TOTAL_SECONDS
+                        and backend_index >= FALLBACK_MIN_BACKUPS)):
                 raise
             logger.warning("AI backend %s failed (%s: %s); answering with backup %s instead, model=%s",
                            b_cfg['id'], exc.__class__.__name__, str(exc)[:160],

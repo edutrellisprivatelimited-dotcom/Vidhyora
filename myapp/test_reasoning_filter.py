@@ -39,6 +39,10 @@ class LeadingReasoningTests(SimpleTestCase):
 
     def test_a_proper_think_block_is_still_removed(self):
         self.assertEqual(filtered('<think>Plan the reply.</think>Here you go.'), 'Here you go.')
+        # The closing tag arriving in a later piece than the opening one.
+        chunks = ['<think>let me wor', 'k it out</think>The answer is 4.']
+        self.assertEqual(''.join(ai_chat._without_think(ai_chat._without_leading_reasoning(chunks))),
+                         'The answer is 4.')
 
     def test_whole_reply_cleanup_handles_the_lone_closing_tag_too(self):
         self.assertEqual(ai_chat.strip_think_tags(LEAK), ANSWER)

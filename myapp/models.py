@@ -109,13 +109,19 @@ class StoreProfile(models.Model):
 
 
 class ActiveUserSession(models.Model):
-    """The one browser session currently allowed to use a user account."""
+    """One logged-in device (browser session) of a user account. See
+    myapp.devices for how many each account may have."""
 
-    user = models.OneToOneField(
-        User, on_delete=models.CASCADE, related_name='active_login_session',
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='login_devices',
     )
     session_key = models.CharField(max_length=40, unique=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    # Added with a "Connected devices" login link rather than a password login.
+    added_by_link = models.BooleanField(default=False)
+    user_agent = models.CharField(max_length=300, blank=True)
+    ip = models.CharField(max_length=64, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)  # last seen
 
     class Meta:
         verbose_name = 'Active User Session'
@@ -123,6 +129,24 @@ class ActiveUserSession(models.Model):
 
     def __str__(self):
         return f'{self.user.username} — {self.session_key}'
+
+
+def _new_device_token():
+    return secrets.token_urlsafe(24)
+
+
+class DeviceLoginLink(models.Model):
+    """A one-time link from "Connected devices" that logs another device in
+    to the account it was made from. Expires after a few minutes."""
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='device_login_links')
+    token = models.CharField(max_length=64, unique=True, default=_new_device_token)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f'{self.user.username} — device link'
 
 
 
@@ -417,6 +441,9 @@ class DropboxSettings(models.Model):
     app_secret    = models.CharField(max_length=200, blank=True)
     refresh_token = models.CharField(max_length=400, blank=True)
     auto_backup_enabled = models.BooleanField(default=True, help_text='Back up to Dropbox every 24 hours, replacing the previous automatic backup.')
+    # The Dropbox folder everything was last kept in ("/<AI name>"). When the
+    # AI is renamed, myapp.dropbox_layout moves that folder to the new name.
+    dropbox_root  = models.CharField(max_length=120, blank=True)
     updated_at    = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -788,6 +815,36 @@ class AINote(models.Model):
 
     def __str__(self):
         return self.heading or f"Note #{self.pk}"
+
+
+def _new_image_token():
+    return secrets.token_urlsafe(16)
+
+
+class StoredImage(models.Model):
+    """One AI-generated image, kept as compressed WebP in Dropbox (see
+    myapp.image_store). The page shows it at /AI/images/<token>/, never by its
+    Dropbox link; the copy on the server is only a cache."""
+    token        = models.CharField(max_length=40, unique=True, default=_new_image_token)
+    user         = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='stored_images')
+    owner_email  = models.CharField(max_length=254, blank=True)
+    local_name   = models.CharField(max_length=255, blank=True)   # the server copy, in media storage
+    dropbox_path = models.CharField(max_length=500, blank=True)   # empty until uploaded
+    size         = models.PositiveIntegerField(default=0)
+    width        = models.PositiveIntegerField(default=0)
+    height       = models.PositiveIntegerField(default=0)
+    # For a picture redrawn from an edit request: what it shows, with every
+    # word on it, so editing it again starts from these exact words instead of
+    # reading them back off the picture (see myapp.image_edit).
+    brief        = models.TextField(blank=True)
+    created_at   = models.DateTimeField(auto_now_add=True)
+    uploaded_at  = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Image {self.token}'
 
 
 class AIUserImage(models.Model):
@@ -1422,97 +1479,6 @@ class ContactSubmission(models.Model):
 
     def __str__(self):
         return f'{self.get_source_display()}: {self.name or self.email}'
-
-
-# ── /chats: a support chat with its own accounts ─────────────────────────────
-# Deliberately separate from django.contrib.auth: a /chats account cannot log
-# in to the AI page or the dashboard, and the reverse. See myapp.support_chat.
-class ChatUser(models.Model):
-    name = models.CharField(max_length=120)
-    email = models.EmailField(unique=True)
-    phone = models.CharField(max_length=20)
-    state = models.CharField(max_length=60)
-    city = models.CharField(max_length=80)
-    password = models.CharField(max_length=128)   # a django.contrib.auth.hashers hash
-    # Shown as "verification needed" — nothing verifies it yet.
-    is_verified = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-    last_seen_at = models.DateTimeField(null=True, blank=True)
-    photo = models.ImageField(upload_to='support_chat/users/', blank=True)
-    # Turned off by staff: can't log in, and is logged out of open chats.
-    is_active = models.BooleanField(default=True)
-    # Chatting without an account; becomes a normal account on sign-up.
-    is_guest = models.BooleanField(default=False, db_index=True)
-    ip = models.CharField(max_length=64, blank=True, db_index=True)        # where the chat was started
-    last_ip = models.CharField(max_length=64, blank=True)
-
-    class Meta:
-        ordering = ['-created_at']
-        verbose_name = 'Chat user'
-
-    def __str__(self):
-        return f'{self.name} <{self.email}>'
-
-
-class ChatPasswordReset(models.Model):
-    user = models.ForeignKey(ChatUser, on_delete=models.CASCADE, related_name='password_resets')
-    token_hash = models.CharField(max_length=64, unique=True)   # sha256 of the emailed token
-    created_at = models.DateTimeField(auto_now_add=True)
-    used = models.BooleanField(default=False)
-
-
-class ChatMessage(models.Model):
-    SENDER_USER = 'user'
-    SENDER_ADMIN = 'admin'
-    SENDER_CHOICES = [(SENDER_USER, 'User'), (SENDER_ADMIN, 'Admin')]
-
-    KIND_TEXT = 'text'
-    KIND_IMAGE = 'image'
-    KIND_VIDEO = 'video'
-    KIND_FILE = 'file'
-    KIND_LOCATION = 'location'
-    KIND_CALL = 'call'
-    KIND_CHOICES = [(KIND_TEXT, 'Text'), (KIND_IMAGE, 'Photo'), (KIND_VIDEO, 'Video'), (KIND_FILE, 'File'),
-                    (KIND_LOCATION, 'Location'), (KIND_CALL, 'Call')]
-
-    user = models.ForeignKey(ChatUser, on_delete=models.CASCADE, related_name='messages')
-    sender = models.CharField(max_length=5, choices=SENDER_CHOICES)
-    kind = models.CharField(max_length=8, choices=KIND_CHOICES, default=KIND_TEXT)
-    body = models.TextField(blank=True)   # the text, a caption, or the call summary
-    # Served only through support_chat.attachment, which checks who is asking.
-    attachment = models.FileField(upload_to='support_chat/%Y/%m/', blank=True)
-    attachment_name = models.CharField(max_length=200, blank=True)
-    latitude = models.FloatField(null=True, blank=True)
-    longitude = models.FloatField(null=True, blank=True)
-    # A live location keeps updating until this time (None = a one-off pin).
-    live_until = models.DateTimeField(null=True, blank=True)
-    location_updated_at = models.DateTimeField(null=True, blank=True)
-    # A user message is "pending" until an admin opens that chat.
-    read_by_admin = models.BooleanField(default=False, db_index=True)
-    # An admin reply is "seen" (blue ticks) once the user's open chat loads it.
-    read_by_user = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ['created_at', 'pk']
-
-
-class SupportProfile(models.Model):
-    """How the support team appears to people on /chats (one row)."""
-    display_name = models.CharField(max_length=60, default='Support')
-    about = models.CharField(max_length=120, default='We usually reply within a few hours')
-    welcome = models.CharField(max_length=300, default='Send us a message, a photo or your location — our team will reply here.')
-    photo = models.ImageField(upload_to='support_chat/profile/', blank=True)
-    # Shown on /chats "Forgot password" — people write here to get back in.
-    support_email = models.EmailField(default='shifn32@gmail.com', blank=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    @classmethod
-    def load(cls):
-        return cls.objects.get_or_create(pk=1)[0]
-
-    def __str__(self):
-        return self.display_name
 
 
 def _new_join_token():

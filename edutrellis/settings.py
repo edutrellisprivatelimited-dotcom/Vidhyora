@@ -73,7 +73,6 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
                 'myapp.business_info.context_processor',
                 'myapp.views.site_customization_context',
-                'myapp.support_chat.dashboard_context',
             ],
         },
     },
@@ -201,6 +200,10 @@ DROPBOX_IMAGE_ARCHIVE_ENABLED = not (
     'test' in sys.argv
     or os.path.basename(sys.argv[0] if sys.argv else '').startswith(('pytest', 'py.test'))
 )
+if not DROPBOX_IMAGE_ARCHIVE_ENABLED:
+    # Tests never reach the real Dropbox account; the ones that need
+    # credentials set their own with override_settings.
+    DROPBOX_APP_KEY = DROPBOX_APP_SECRET = DROPBOX_REFRESH_TOKEN = ''
 
 # The 24-hour automatic Dropbox backup timer (myapp.dropbox_backup.start_scheduler).
 # Only the live server (gunicorn, see Procfile) runs it. A computer running
