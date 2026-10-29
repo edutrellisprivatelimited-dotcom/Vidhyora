@@ -1103,6 +1103,69 @@ class AIAPIKey(models.Model):
         return cls.objects.select_related('user').filter(key_hash=cls._hash(raw_key)).first()
 
 
+class AIAPIRequest(models.Model):
+    """One developer API call that reached a model, for the usage numbers in
+    the account's Get API panel. Kept per user (not per key) so the history
+    survives regenerating the key; rows older than KEEP_DAYS are pruned."""
+    KIND_CHAT = 'chat'
+    KIND_IMAGE = 'image'
+    KIND_CHOICES = [(KIND_CHAT, 'Chat'), (KIND_IMAGE, 'Image')]
+    KEEP_DAYS = 90
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='ai_api_requests')
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES, default=KIND_CHAT)
+    model_key = models.CharField(max_length=60, blank=True)
+    with_image = models.BooleanField(default=False)
+    ok = models.BooleanField(default=True)
+    duration_ms = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['user', 'created_at'])]
+
+    def __str__(self):
+        return f"{self.user} {self.kind} {self.model_key} {'ok' if self.ok else 'failed'}"
+
+
+def _new_tutorial_token():
+    return secrets.token_urlsafe(16)
+
+
+class TutorialVideo(models.Model):
+    """One "Video tutorials" clip, uploaded by staff on the dashboard and
+    played in a pop-up on the AI page (see myapp.tutorials). The file lives
+    on the server (a cache) and in Dropbox (the lasting copy), like the AI
+    images; it is not a FileField, so backups don't carry the videos."""
+    STATUS_UPLOADING = 'uploading'
+    STATUS_READY = 'ready'
+    STATUS_CHOICES = [(STATUS_UPLOADING, 'Uploading'), (STATUS_READY, 'Ready')]
+
+    token = models.CharField(max_length=40, unique=True, default=_new_tutorial_token)
+    title = models.CharField(max_length=120)
+    description = models.CharField(max_length=300, blank=True)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default=STATUS_UPLOADING)
+    is_active = models.BooleanField(default=True, help_text='Shown to users when ticked.')
+    sort_order = models.PositiveIntegerField(default=0)
+    original_name = models.CharField(max_length=255, blank=True)
+    extension = models.CharField(max_length=8, default='mp4')
+    size = models.PositiveBigIntegerField(default=0)          # expected size, set when the upload starts
+    received = models.PositiveBigIntegerField(default=0)      # bytes stored so far
+    duration_seconds = models.PositiveIntegerField(default=0)
+    poster = models.TextField(blank=True)                     # small WebP/JPEG data URI of one frame
+    local_name = models.CharField(max_length=255, blank=True)
+    dropbox_path = models.CharField(max_length=500, blank=True)
+    uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['sort_order', 'created_at']
+
+    def __str__(self):
+        return self.title
+
+
 class AICodingKey(models.Model):
     """A key for the "Start coding" CLI (OpenCode pointed at /api/v1/code/).
     Separate from AIAPIKey so the developer API and the coding CLI can be

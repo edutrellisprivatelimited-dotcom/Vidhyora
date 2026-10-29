@@ -10,6 +10,7 @@ Logging a device out deletes its session, so that browser is signed out on
 its next request. The HTTP side (list, remove, login links) is in
 myapp.device_links.
 """
+import ipaddress
 from datetime import timedelta
 
 from django.contrib.sessions.models import Session
@@ -29,8 +30,20 @@ def device_limit(user):
 
 
 def client_ip(request):
-    forwarded = request.META.get('HTTP_X_FORWARDED_FOR')
-    return forwarded.split(',')[0].strip() if forwarded else request.META.get('REMOTE_ADDR', '')
+    """The visitor's real IP address, or '' when unknown.
+
+    Railway's edge sets X-Real-IP to the address that connected to it and
+    replaces any copy the visitor sent (still right with Cloudflare in front).
+    X-Forwarded-For is never read: its first entry is whatever the visitor
+    typed, so trusting it let anyone dodge rate limits and IP blocks.
+    Without the edge (local runserver) it is the direct connection.
+    """
+    for value in (request.META.get('HTTP_X_REAL_IP', ''), request.META.get('REMOTE_ADDR', '')):
+        try:
+            return str(ipaddress.ip_address(value.strip()))
+        except ValueError:
+            continue
+    return ''
 
 
 def live_devices(user):

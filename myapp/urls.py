@@ -1,6 +1,6 @@
 from django.urls import path
 from django.views.generic import RedirectView
-from myapp import ai_calls, api_checker, calls_dashboard, coding_api, coding_dashboard, device_links, image_store, join_links, views
+from myapp import ai_calls, api_checker, calls_dashboard, coding_api, coding_dashboard, device_links, image_store, join_links, tutorials, views
 
 urlpatterns = [
     path('', views.ai_page, name='home'),
@@ -83,6 +83,13 @@ urlpatterns = [
     path('store/dashboard/backup/delete-all/', views.dashboard_backup_delete_all, name='dashboard_backup_delete_all'),
     path('store/dashboard/backup/delete/', views.dashboard_backup_delete, name='dashboard_backup_delete'),
     path('store/dashboard/backup/download/', views.dashboard_backup_download, name='dashboard_backup_download'),
+    path('store/dashboard/tutorials/', tutorials.dashboard_page, name='dashboard_tutorials'),
+    path('store/dashboard/tutorials/upload/start/', tutorials.upload_start, name='dashboard_tutorial_upload_start'),
+    path('store/dashboard/tutorials/<int:pk>/upload/chunk/', tutorials.upload_chunk, name='dashboard_tutorial_upload_chunk'),
+    path('store/dashboard/tutorials/<int:pk>/upload/finish/', tutorials.upload_finish, name='dashboard_tutorial_upload_finish'),
+    path('store/dashboard/tutorials/<int:pk>/edit/', tutorials.edit, name='dashboard_tutorial_edit'),
+    path('store/dashboard/tutorials/<int:pk>/move/<str:direction>/', tutorials.move, name='dashboard_tutorial_move'),
+    path('store/dashboard/tutorials/<int:pk>/delete/', tutorials.delete, name='dashboard_tutorial_delete'),
     path('store/dashboard/logout/', views.dashboard_logout, name='dashboard_logout'),
 
     path('AI/manifest.json', views.ai_manifest, name='ai_manifest'),
@@ -123,6 +130,8 @@ urlpatterns = [
     path('AI/api/join-links/', join_links.api_links, name='ai_join_links'),
     path('AI/api/join-links/<int:pk>/remove/', join_links.api_link_remove, name='ai_join_link_remove'),
     path('AI/images/<str:name>', image_store.serve, name='ai_image'),
+    path('AI/api/tutorials/', tutorials.api_list, name='ai_tutorials'),
+    path('AI/tutorials/<str:token>/video', tutorials.video, name='tutorial_video'),
     path('AI/api/devices/', device_links.api_devices, name='ai_devices'),
     path('AI/api/devices/link/', device_links.api_device_link, name='ai_device_link'),
     path('AI/api/devices/<int:pk>/remove/', device_links.api_device_remove, name='ai_device_remove'),
@@ -143,6 +152,7 @@ urlpatterns = [
     # allowed models directly, authenticated by AIAPIKey (Authorization:
     # Bearer <key>) rather than a browser session. See views.api_chat_completions.
     path('api/v1/chat/', views.api_chat_completions, name='api_chat_completions'),
+    path('api/v1/images/', views.api_images, name='api_images'),
     # "Start coding": an OpenAI-compatible provider for terminal coding agents
     # (OpenCode). Authenticated by a personal vdc_ key; see myapp/coding_api.py.
     path('api/v1/code/models', coding_api.models_list, name='coding_api_models'),

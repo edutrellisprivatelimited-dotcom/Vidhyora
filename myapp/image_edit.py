@@ -37,7 +37,7 @@ DESCRIBE_DEADLINE = 40.0   # stop reading the description after this long
 BRIEF_TIMEOUT = 25.0
 BRIEF_MAX_CHARS = 2000
 CHANGE_MAX_CHARS = 200
-REDRAWN_NOTE = '_Drawn again from your picture with this change, so small details may differ._'
+REDRAWN_NOTE = 'Drawn again from your picture with this change, so small details may differ.'
 
 # How a small or photographed copy gets described; never wanted in the new artwork.
 _POOR_COPY_RE = re.compile(r'\b(?:blurr?(?:y|ed)?|pixel+ated|low[- ](?:quality|resolution)|screenshot)\b', re.IGNORECASE)

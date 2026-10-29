@@ -246,6 +246,12 @@ def enqueue_stored_image(pk):
     return _submit(image_store.upload_stored, pk)
 
 
+def enqueue_tutorial_video(pk):
+    """Queue one finished tutorials.TutorialVideo for upload. Never raises."""
+    from myapp import tutorials
+    return _submit(tutorials.upload_to_dropbox, pk)
+
+
 def _decode_data_uri(value):
     match = _DATA_URI_HEADER_RE.match((value or '')[:64])
     if not match:

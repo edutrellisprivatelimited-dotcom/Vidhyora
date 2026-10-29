@@ -181,12 +181,31 @@ def _authenticate(request):
             'Your Vidhyora AI plan does not include Code-X. Upgrade your plan or ask the administrator.',
             403, kind='permission_error', code='plan_required',
         )
+    if _is_blocked(request, key.user):
+        return None, _error(
+            f'Your access to Vidhyora AI has been restricted. {_contact()}',
+            403, kind='permission_error', code='account_blocked',
+        )
     if not model_controls.is_enabled(CONTROL_KEY):
         return None, _error(
             f'Code-X is switched off right now. {_contact()}',
             503, kind='server_error', code='service_disabled',
         )
     return key, None
+
+
+def _is_blocked(request, user):
+    """A staff block (dashboard AI Activity) on this account or this IP."""
+    from django.db.models import Q
+    from myapp.models import AIBlock
+    from myapp.views import _ai_has_admin_access
+    if _ai_has_admin_access(user):
+        return False
+    block_filter = Q(user=user)
+    ip = _client_ip(request)
+    if ip:
+        block_filter |= Q(ip_address=ip)
+    return AIBlock.objects.filter(block_filter).exists()
 
 
 def _check_rate(key):
@@ -646,8 +665,8 @@ _USER_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'   # no 0/O, 1/I
 
 
 def _client_ip(request):
-    forwarded = request.META.get('HTTP_X_FORWARDED_FOR', '')
-    return (forwarded.split(',')[0].strip() or request.META.get('REMOTE_ADDR', ''))[:64]
+    from myapp.devices import client_ip
+    return client_ip(request)
 
 
 def _base_url(request):

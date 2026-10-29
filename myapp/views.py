@@ -25,6 +25,7 @@ from django.contrib.auth import authenticate, login, logout, update_session_auth
 from django.contrib.auth.models import User
 from django.db import OperationalError, ProgrammingError
 from django.db.models import Q, F, Count, Sum, Max, Prefetch, Exists, OuterRef
+from django.db.models.functions import TruncDate
 from django.shortcuts import render, redirect, get_object_or_404
 from django.template.loader import render_to_string
 from django.urls import resolve, Resolver404, reverse
@@ -43,7 +44,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from datetime import datetime, timedelta, timezone as dt_timezone
 from myapp.forms import PhoneVerifyForm, AILoginForm, SignupEditForm, AIProfileEditForm, AIPasswordChangeForm, PaymentSettingsForm, PWASettingsForm, GrantAISubscriptionForm, GrantAPIAccessForm, AddUserForm, SiteCustomizationForm, MAX_AMOUNT_PAID
-from myapp.models import ContactSubmission, StoreProfile, Order, OrderItem, PaymentSettings, Payment, DropboxSettings, PhoneVerification, PWASettings, SiteCustomization, AIAccountMessageSettings, AIConversation, AIMessage, AIBlock, AINote, AIReport, AIGeneratedFile, AIUserImage, GitHubConnection, YouTubeDownloadJob, AIAPIAccess, AIAPIKey, ProviderAPICredential, AIVideoJob
+from myapp.models import ContactSubmission, StoreProfile, Order, OrderItem, PaymentSettings, Payment, DropboxSettings, PhoneVerification, PWASettings, SiteCustomization, AIAccountMessageSettings, AIConversation, AIMessage, AIBlock, AINote, AIReport, AIGeneratedFile, AIUserImage, GitHubConnection, YouTubeDownloadJob, AIAPIAccess, AIAPIKey, AIAPIRequest, ProviderAPICredential, AIVideoJob
 from myapp import dropbox_backup
 from myapp import dropbox_images
 from myapp import dropbox_layout
@@ -60,6 +61,7 @@ from myapp import doc_extract
 from myapp import doc_image
 from myapp import image_styles
 from myapp import poster
+from myapp import cutout, lettering
 from myapp import doc_text
 from myapp import company_knowledge
 from myapp import image_ocr
@@ -77,7 +79,8 @@ from myapp.ai_report_analysis import analyze_report, aggregate_report_issues
 from myapp.emailing import send_store_email, get_notify_email
 from myapp.sms import send_phone_otp, verify_phone_otp
 from myapp import model_controls
-from myapp.devices import keep_only_this_device
+from myapp import login_guard
+from myapp.devices import client_ip, keep_only_this_device
 
 logger = logging.getLogger(__name__)
 
@@ -346,12 +349,24 @@ def ai_login(request):
         profile = StoreProfile.objects.filter(phone=identifier).first()
         user_obj = profile.user if profile else None
 
-    if not user_obj:
-        return JsonResponse({'status': 'error', 'detail': 'No account found with that email or phone.'}, status=400)
+    wait = login_guard.wait_seconds(request, user_obj.username if user_obj else identifier)
+    if wait:
+        return JsonResponse({
+            'status': 'error',
+            'detail': f'Too many wrong attempts. Please wait {_format_wait_time(wait)} and try again.',
+        }, status=429)
 
-    auth_user = authenticate(request, username=user_obj.username, password=password)
+    # An unknown email/phone gets the same answer, after the same password
+    # hashing time, as a wrong password, so the form can't be used to find
+    # out who has an account.
+    if user_obj:
+        auth_user = authenticate(request, username=user_obj.username, password=password)
+    else:
+        User().set_password(password)
+        login_guard.record_failure(request, identifier)
+        auth_user = None
     if not auth_user:
-        return JsonResponse({'status': 'error', 'detail': 'Incorrect password.'}, status=400)
+        return JsonResponse({'status': 'error', 'detail': 'Incorrect email/phone or password.'}, status=400)
 
     if not request.session.session_key:
         request.session.create()
@@ -618,23 +633,11 @@ def ai_account_details(request):
     ]
 
     api_access = AIAPIAccess.objects.filter(user=request.user).exclude(model_keys='').first()
-    api_key = getattr(request.user, 'ai_api_key', None)
-    granted_model_keys = api_access.model_key_list if api_access else []
+    api_key = AIAPIKey.objects.filter(user=request.user).first()
     response = JsonResponse({
         'status': 'ok',
         'user': _user_payload(request.user),
-        'api_access': {
-            'granted': bool(granted_model_keys),
-            'models': [
-                {'key': key, 'label': ai_chat.MODELS[key]['label']}
-                for key in granted_model_keys if key in ai_chat.MODELS
-            ],
-            'has_key': bool(api_key),
-            'key_prefix': api_key.key_prefix if api_key else None,
-            'key_created_at': (
-                timezone.localtime(api_key.created_at).isoformat() if api_key else None
-            ),
-        },
+        'api_access': _api_account_summary(request.user, api_access, api_key),
         'coding': coding_api.account_summary(
             request.user, allowed=bool(is_staff or is_subscribed), purchase_url=_ai_purchase_url(),
         ),
@@ -744,6 +747,145 @@ def _api_chat_model_choices():
     }
 
 
+def _api_limits():
+    """(requests per minute, requests per day) for one developer key."""
+    return (
+        int(getattr(settings, 'DEVELOPER_API_RATE_PER_MINUTE', 20)),
+        int(getattr(settings, 'DEVELOPER_API_REQUESTS_PER_DAY', 1000)),
+    )
+
+
+def _api_error(message, status, code):
+    return JsonResponse({'error': message, 'code': code}, status=status)
+
+
+def _api_rate_limited(api_key):
+    """None while the developer key is within its per-minute and per-day
+    limits, else the 429 response. Settings can tune both numbers."""
+    per_minute, per_day = _api_limits()
+    minute_slot = int(time.time() // 60)
+    for name, limit, ttl, wait, what in (
+        (f'devapi:m:{api_key.pk}:{minute_slot}', per_minute, 120, 60, 'per minute'),
+        (f'devapi:d:{api_key.pk}:{timezone.localdate()}', per_day, 90000, 3600, 'per day'),
+    ):
+        cache.add(name, 0, ttl)
+        try:
+            count = cache.incr(name)
+        except ValueError:
+            cache.set(name, 1, ttl)
+            count = 1
+        if count > limit:
+            response = _api_error(
+                f'Rate limit reached: {limit} requests {what} for this key. Try again later.', 429, 'rate_limited',
+            )
+            response['Retry-After'] = str(wait)
+            return response
+    return None
+
+
+def _api_authorize(request):
+    """(api_key, granted model keys, ip, None) for a developer API call that
+    may go ahead, else (None, None, None, error response). The same rules as
+    the chat page: blocked accounts/IPs are refused."""
+    if request.method != 'POST':
+        return None, None, None, _api_error('Invalid request method. Use POST.', 405, 'method_not_allowed')
+    auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+    raw_key = auth_header[7:] if auth_header.lower().startswith('bearer ') else ''
+    api_key = AIAPIKey.resolve(raw_key)
+    if not api_key or not api_key.user.is_active:
+        return None, None, None, _api_error(
+            'Invalid or missing API key. Send it as "Authorization: Bearer <key>".', 401, 'invalid_api_key',
+        )
+    user = api_key.user
+    ip = _client_ip(request)
+    if not _ai_has_admin_access(user):
+        block_filter = Q(user=user)
+        if ip != 'unknown':
+            block_filter |= Q(ip_address=ip)
+        if AIBlock.objects.filter(block_filter).exists():
+            return None, None, None, _api_error(
+                'Your access to Vidhyora AI has been restricted. Contact support if you think this is a mistake.',
+                403, 'account_blocked',
+            )
+    limited = _api_rate_limited(api_key)
+    if limited:
+        return None, None, None, limited
+    access = AIAPIAccess.objects.filter(user=user).exclude(model_keys='').first()
+    granted = set(access.model_key_list) if access else set()
+    if not granted:
+        return None, None, None, _api_error(
+            'This API key has no model access. Contact an administrator.', 403, 'no_access',
+        )
+    return api_key, granted, ip, None
+
+
+def _api_spend_message(user, ip):
+    """None after counting one message against a free account's allowance
+    (staff and subscribers are not counted), else the 403 response."""
+    gate = _ai_profile_gate(user, ip)
+    if gate:
+        return _api_error(gate['detail'], 403, 'subscription_required')
+    if not _ai_has_admin_access(user):
+        StoreProfile.objects.filter(user=user).exclude(
+            ai_subscription_until__gt=timezone.now(),
+        ).update(ai_free_messages_used=F('ai_free_messages_used') + 1)
+    return None
+
+
+def _api_log(api_key, kind, model_key, *, ok, started, with_image=False):
+    """Record one call for the Get API usage numbers. Never raises."""
+    try:
+        AIAPIRequest.objects.create(
+            user=api_key.user, kind=kind, model_key=model_key, ok=ok, with_image=with_image,
+            duration_ms=int((time.monotonic() - started) * 1000),
+        )
+        AIAPIRequest.objects.filter(
+            user=api_key.user, created_at__lt=timezone.now() - timedelta(days=AIAPIRequest.KEEP_DAYS),
+        ).delete()
+        if ok:
+            AIAPIKey.objects.filter(pk=api_key.pk).update(
+                last_used_at=timezone.now(), request_count=F('request_count') + 1,
+            )
+    except Exception:
+        logger.exception('Could not record the developer API call for user %s', api_key.user_id)
+
+
+# A picture sent to the API: a base64 data URI only. A web address is not
+# accepted, so the API can never be used to make the server fetch a URL.
+_API_IMAGE_DATA_URI_RE = re.compile(r'^data:image/(?:png|jpe?g|webp|gif);base64,([A-Za-z0-9+/]+={0,2})$')
+
+
+def _api_read_image(value):
+    """The picture's data URI, checked; raises ValueError with a message for
+    the caller when it is not a usable picture."""
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError('"image" must be a data URI like "data:image/png;base64,iVBOR...".')
+    value = re.sub(r'\s+', '', value)
+    if len(value) > AI_IMAGE_MAX_DATA_URI_CHARS:
+        raise ValueError('That image is too large. Send one under about 1.5 MB.')
+    match = _API_IMAGE_DATA_URI_RE.match(value)
+    if not match:
+        raise ValueError(
+            '"image" must be a base64 data URI of a PNG, JPEG, WebP or GIF picture, '
+            'like "data:image/png;base64,iVBOR...". Web addresses are not accepted.'
+        )
+    try:
+        base64.b64decode(match.group(1), validate=True)
+    except (binascii.Error, ValueError):
+        raise ValueError('The image data is not valid base64.')
+    return value
+
+
+def _api_language(payload):
+    """The reply language code from the payload; raises ValueError."""
+    language = str(payload.get('language') or ai_chat.DEFAULT_LANGUAGE).strip().lower()
+    if language not in ai_chat.LANGUAGES:
+        raise ValueError(
+            f'Unknown language "{language}". Use one of: {", ".join(code for code, *_ in ai_chat.LANGUAGE_MENU)}.'
+        )
+    return language
+
+
 @csrf_exempt
 def api_chat_completions(request):
     """Public developer API: a granted user's own code calls this directly
@@ -751,62 +893,90 @@ def api_chat_completions(request):
     AIAPIAccess/AIAPIKey and dashboard_api_management. Deliberately a plain
     JSON in/JSON out endpoint (not streaming): an external HTTP client is
     far more likely to want one complete response than an SSE-style stream.
+    An optional "image" (data URI) is read with the last message, by the
+    model itself or, for a text-only model, by the vision model answering as
+    it — the same as attaching a photo on the chat page.
     """
-    if request.method != 'POST':
-        return JsonResponse({'error': 'Invalid request method. Use POST.'}, status=405)
-
-    auth_header = request.META.get('HTTP_AUTHORIZATION', '')
-    raw_key = auth_header[7:] if auth_header.lower().startswith('bearer ') else ''
-    api_key = AIAPIKey.resolve(raw_key)
-    if not api_key:
-        return JsonResponse({'error': 'Invalid or missing API key. Send it as "Authorization: Bearer <key>".'}, status=401)
-
-    access = AIAPIAccess.objects.filter(user=api_key.user).exclude(model_keys='').first()
-    granted = set(access.model_key_list) if access else set()
-    if not granted:
-        return JsonResponse({'error': 'This API key has no model access. Contact an administrator.'}, status=403)
+    api_key, granted, ip, failure = _api_authorize(request)
+    if failure:
+        return failure
+    user = api_key.user
 
     payload = _parse_json_body(request)
+    if not isinstance(payload, dict):
+        return _api_error('The request body must be a JSON object.', 400, 'invalid_request')
     model_key = str(payload.get('model') or '').strip()
     if not model_key:
-        return JsonResponse({'error': 'The "model" field is required.'}, status=400)
+        return _api_error('The "model" field is required.', 400, 'invalid_request')
     if model_key not in granted:
-        return JsonResponse({
-            'error': f'This API key is not authorized for model "{model_key}". '
-                     f'Authorized models: {", ".join(sorted(granted)) or "(none)"}.',
-        }, status=403)
+        return _api_error(
+            f'This API key is not authorized for model "{model_key}". '
+            f'Authorized models: {", ".join(sorted(granted)) or "(none)"}.', 403, 'model_not_allowed',
+        )
     chat_models = _api_chat_model_choices()
     if model_key not in chat_models:
-        return JsonResponse({'error': f'Model "{model_key}" does not support the chat API.'}, status=400)
+        return _api_error(
+            f'Model "{model_key}" does not support the chat API. To make pictures, use /api/v1/images/.',
+            400, 'not_a_chat_model',
+        )
     if not ai_chat.is_model_enabled(model_key):
-        return JsonResponse({'error': f'Model "{model_key}" is currently disabled.'}, status=503)
+        return _api_error(f'Model "{model_key}" is currently disabled.', 503, 'model_disabled')
 
     messages = payload.get('messages')
     if not messages:
         single_message = str(payload.get('message') or '').strip()
         if not single_message:
-            return JsonResponse({'error': 'Provide either "message" (a string) or "messages" (a list).'}, status=400)
+            return _api_error('Provide either "message" (a string) or "messages" (a list).', 400, 'invalid_request')
         messages = [{'role': 'user', 'content': single_message}]
     if not isinstance(messages, list) or not messages:
-        return JsonResponse({'error': '"messages" must be a non-empty list of {role, content} objects.'}, status=400)
+        return _api_error('"messages" must be a non-empty list of {role, content} objects.', 400, 'invalid_request')
     if len(messages) > 30:
-        return JsonResponse({'error': 'Too many messages — send at most 30 per request.'}, status=400)
+        return _api_error('Too many messages — send at most 30 per request.', 400, 'invalid_request')
     clean_messages = []
     for item in messages:
         if not isinstance(item, dict) or item.get('role') not in ('user', 'assistant') or not str(item.get('content') or '').strip():
-            return JsonResponse({'error': 'Each message needs "role" ("user" or "assistant") and non-empty "content".'}, status=400)
+            return _api_error(
+                'Each message needs "role" ("user" or "assistant") and non-empty "content".', 400, 'invalid_request',
+            )
         content = str(item['content'])
         if len(content) > 8000:
-            return JsonResponse({'error': 'Each message\'s content must be 8000 characters or fewer.'}, status=400)
+            return _api_error('Each message\'s content must be 8000 characters or fewer.', 400, 'invalid_request')
         clean_messages.append({'role': item['role'], 'content': content})
     if clean_messages[-1]['role'] != 'user':
-        return JsonResponse({'error': 'The last message must have role "user".'}, status=400)
+        return _api_error('The last message must have role "user".', 400, 'invalid_request')
 
     try:
-        reply = ''.join(ai_chat.stream_chat(clean_messages, model_key=model_key))
+        language = _api_language(payload)
+        image = _api_read_image(payload['image']) if payload.get('image') else ''
+    except ValueError as exc:
+        return _api_error(str(exc), 400, 'invalid_request')
+    worker_key = model_key
+    if image:
+        worker_key = model_key if ai_chat.MODELS[model_key].get('vision') else 'vision'
+        if not ai_chat.is_model_enabled(worker_key):
+            return _api_error('Reading images is switched off right now. Send text only.', 503, 'model_disabled')
+        # Text found in the picture helps with screenshots and documents.
+        words = image_ocr.extract_data_uri(image)
+        text = clean_messages[-1]['content'] + (f'\n\nLocally detected text:\n{words}' if words else '')
+        clean_messages[-1] = {'role': 'user', 'content': [
+            {'type': 'text', 'text': text},
+            {'type': 'image_url', 'image_url': {'url': image}},
+        ]}
+
+    spent = _api_spend_message(user, ip)
+    if spent:
+        return spent
+
+    started = time.monotonic()
+    try:
+        reply = ''.join(ai_chat.stream_chat(
+            clean_messages, model_key=worker_key,
+            identity_model_key=(model_key if worker_key != model_key else None), language=language,
+        ))
     except Exception as exc:
         logger.exception('Developer API chat request failed for user %s model=%s', api_key.user_id, model_key)
-        return JsonResponse({'error': _ai_chat_failure_reply(exc, model_key, is_staff=False)}, status=502)
+        _api_log(api_key, AIAPIRequest.KIND_CHAT, model_key, ok=False, started=started, with_image=bool(image))
+        return _api_error(_ai_chat_failure_reply(exc, model_key, is_staff=False), 502, 'model_error')
 
     # Same public-facing sanitization the in-app chat gets — an external caller
     # leaking the real backend vendor or borrowing a persona name it wasn't
@@ -819,12 +989,177 @@ def api_chat_completions(request):
     else:
         reply = _vidhyora_public_reply(reply, ai_chat.MODELS[model_key]['label'])
 
-    AIAPIKey.objects.filter(pk=api_key.pk).update(last_used_at=timezone.now(), request_count=F('request_count') + 1)
+    _api_log(api_key, AIAPIRequest.KIND_CHAT, model_key, ok=True, started=started, with_image=bool(image))
     return JsonResponse({
         'model': model_key,
         'reply': reply,
         'created_at': timezone.now().isoformat(),
     })
+
+
+def _api_image_error(exc):
+    """A failed picture as the caller should see it: the service's own
+    message when it is about the prompt, never a vendor or model name."""
+    detail = str(exc).strip()
+    lower = detail.lower()
+    if getattr(exc, 'blocked', False) or 'content filter' in lower or 'content_filtered' in lower:
+        return 'That request was blocked by the safety filter. Try a different prompt or image.', 400
+    if getattr(exc, 'status_code', None) == 400 and detail and not any(
+        term in lower for term in ('nvidia', 'flux', 'nemotron', 'black-forest', 'black forest', 'api_key')
+    ):
+        return detail, 400
+    return 'The picture could not be made right now. Please try again in a minute.', 502
+
+
+@csrf_exempt
+def api_images(request):
+    """Developer API for pictures: {"prompt": ...} makes one, and with an
+    "image" (data URI) it redraws that picture with the prompt applied — the
+    same as asking on the chat page. Pictures count towards the same daily
+    limit as the chat page and appear in the account's My Images."""
+    api_key, _granted, ip, failure = _api_authorize(request)
+    if failure:
+        return failure
+    user = api_key.user
+
+    payload = _parse_json_body(request)
+    if not isinstance(payload, dict):
+        return _api_error('The request body must be a JSON object.', 400, 'invalid_request')
+    prompt = str(payload.get('prompt') or '').strip()
+    if not prompt:
+        return _api_error('The "prompt" field is required: describe the picture or the change.', 400, 'invalid_request')
+    if len(prompt) > 4000:
+        return _api_error('The prompt must be 4000 characters or fewer.', 400, 'invalid_request')
+    try:
+        source = _api_read_image(payload['image']) if payload.get('image') else ''
+    except ValueError as exc:
+        return _api_error(str(exc), 400, 'invalid_request')
+    if not ai_chat.is_model_enabled(ai_chat.FLUX_KLEIN_4B_MODEL_KEY):
+        return _api_error('Making pictures is switched off right now.', 503, 'model_disabled')
+    if (
+        (user.email or '').strip().lower() not in AI_UNLIMITED_IMAGE_EMAILS
+        and AIUserImage.objects.filter(user=user, created_at__date=timezone.localdate()).count() >= AI_IMAGE_DAILY_LIMIT
+    ):
+        return _api_error(
+            f'Daily picture limit reached: {AI_IMAGE_DAILY_LIMIT} pictures a day (chat page and API together). '
+            'Try again tomorrow.', 429, 'daily_image_limit',
+        )
+    spent = _api_spend_message(user, ip)
+    if spent:
+        return spent
+
+    started = time.monotonic()
+    note = brief = ''
+    try:
+        if source:
+            redrawn = image_edit.redraw(source, prompt)
+            generated, brief, note = redrawn.image, redrawn.brief, redrawn.change
+        else:
+            generated = poster.make_poster(prompt) or image_generation.generate_image(prompt)
+        stored = image_store.save_generated(generated.content, user, user.email, brief=brief)
+    except image_generation.ImageGenerationError as exc:
+        logger.warning('Developer API picture failed for user %s: %s', api_key.user_id, exc)
+        _api_log(api_key, AIAPIRequest.KIND_IMAGE, 'image', ok=False, started=started, with_image=bool(source))
+        detail, status = _api_image_error(exc)
+        return _api_error(detail, status, 'image_error')
+    except Exception:
+        logger.exception('Developer API picture failed for user %s', api_key.user_id)
+        _api_log(api_key, AIAPIRequest.KIND_IMAGE, 'image', ok=False, started=started, with_image=bool(source))
+        return _api_error('The picture could not be made right now. Please try again in a minute.', 502, 'image_error')
+
+    url = image_store.url_for(stored)
+    try:
+        AIUserImage.objects.create(user=user, url=url, prompt=prompt, model_key=ai_chat.FLUX_KLEIN_4B_MODEL_KEY)
+    except Exception:
+        logger.exception('Could not add the API picture to My Images for user %s', api_key.user_id)
+    _api_log(api_key, AIAPIRequest.KIND_IMAGE, 'image', ok=True, started=started, with_image=bool(source))
+    body = {
+        'image_url': request.build_absolute_uri(url),
+        'width': stored.width,
+        'height': stored.height,
+        'created_at': timezone.now().isoformat(),
+    }
+    if note:
+        body['note'] = note
+    return JsonResponse(body)
+
+
+def _api_account_summary(user, api_access, api_key):
+    """Everything the account's Get API panel shows: models, limits, usage."""
+    granted = api_access.model_key_list if api_access else []
+    chat_models = _api_chat_model_choices()
+    per_minute, per_day = _api_limits()
+    today = timezone.localdate()
+    rows = AIAPIRequest.objects.filter(user=user)
+    week = rows.filter(created_at__date__gte=today - timedelta(days=6))
+    by_day = dict(week.annotate(day=TruncDate('created_at')).values('day').annotate(n=Count('id')).values_list('day', 'n'))
+
+    def model_label(key, kind):
+        if kind == AIAPIRequest.KIND_IMAGE:
+            return 'Pictures'
+        return ai_chat.MODELS.get(key, {}).get('label', key)
+
+    by_model = [
+        {'key': row['model_key'], 'label': model_label(row['model_key'], row['kind']), 'count': row['n']}
+        for row in rows.values('model_key', 'kind').annotate(n=Count('id')).order_by('-n')[:8]
+    ]
+    recent = [
+        {
+            'at': timezone.localtime(row.created_at).isoformat(),
+            'kind': row.kind,
+            'model': model_label(row.model_key, row.kind),
+            'ok': row.ok,
+            'with_image': row.with_image,
+            'duration_ms': row.duration_ms,
+        }
+        for row in rows[:10]
+    ]
+    last = rows.first()
+    full_access = _ai_has_full_model_access(user)
+    profile = StoreProfile.objects.filter(user=user).first()
+    free_used = profile.ai_free_messages_used if profile else 0
+    return {
+        'granted': bool(granted),
+        'base_url': '/api/v1',
+        'models': [
+            {'key': key, 'label': ai_chat.MODELS[key]['label'], 'description': ai_chat.MODELS[key].get('description', '')}
+            for key in granted if key in chat_models
+        ],
+        'images_enabled': ai_chat.is_model_enabled(ai_chat.FLUX_KLEIN_4B_MODEL_KEY),
+        'languages': [
+            {'code': code, 'name': ai_chat.LANGUAGE_NAMES[code][1]} for code, *_ in ai_chat.LANGUAGE_MENU
+        ],
+        'has_key': bool(api_key),
+        'key_prefix': api_key.key_prefix if api_key else None,
+        'key_created_at': timezone.localtime(api_key.created_at).isoformat() if api_key else None,
+        'limits': {
+            'per_minute': per_minute,
+            'per_day': per_day,
+            'images_per_day': AI_IMAGE_DAILY_LIMIT,
+            'max_messages': 30,
+            'max_chars': 8000,
+        },
+        'plan': {
+            'unlimited': full_access,
+            'free_used': free_used,
+            'free_limit': AI_FREE_MESSAGE_LIMIT,
+            'free_remaining': max(0, AI_FREE_MESSAGE_LIMIT - free_used),
+        },
+        'usage': {
+            'today': by_day.get(today, 0),
+            'last_7_days': [
+                {'date': (today - timedelta(days=offset)).isoformat(), 'count': by_day.get(today - timedelta(days=offset), 0)}
+                for offset in range(6, -1, -1)
+            ],
+            'total': rows.count(),
+            'failed_7_days': week.filter(ok=False).count(),
+            'images_today': AIUserImage.objects.filter(user=user, created_at__date=today).count(),
+            'last_used_at': timezone.localtime(last.created_at).isoformat() if last else None,
+            'keep_days': AIAPIRequest.KEEP_DAYS,
+            'by_model': by_model,
+            'recent': recent,
+        },
+    }
 
 
 def custom_404(request, exception=None):
@@ -3592,6 +3927,8 @@ def ai_page(request):
         'ai_default_model_label': model_labels[ai_default_model],
         'ai_model_labels': model_labels,
         'ai_github_oauth_available': bool(settings.GITHUB_OAUTH_CLIENT_ID),
+        # The guide only explains video when a video model is switched on.
+        'ai_video_ready': media_models.active('video') is not None,
         'show_location_prompt': _location_prompt_needed(request.user),
         'show_profile_wizard': _profile_wizard_needed(request.user),
         'ai_pwa': pwa,
@@ -3601,8 +3938,7 @@ def ai_page(request):
 
 
 def _client_ip(request):
-    forwarded = request.META.get('HTTP_X_FORWARDED_FOR')
-    return forwarded.split(',')[0].strip() if forwarded else request.META.get('REMOTE_ADDR', 'unknown')
+    return client_ip(request) or 'unknown'
 
 
 def _format_wait_time(seconds):
@@ -4375,11 +4711,23 @@ def _ai_flux_response(conversation, prompt, source_image, response_model_key=Non
     brief = ''
     try:
         try:
-            # A poster with words that must be exact (brand name, price,
-            # contact details) gets AI artwork with the words lettered on top
-            # by the server — see myapp/poster.py. Anything else is drawn
-            # entirely by the image model, as before.
-            generated = None if source_image else poster.make_poster(prompt)
+            generated = None
+            # "Remove the background" on a picture with a plain one is cut
+            # out exactly on the server (myapp/cutout.py): nothing redrawn.
+            if source_image and cutout.wants_background_removed(prompt):
+                cut = cutout.remove_plain_background(source_image)
+                if cut:
+                    generated = image_generation.GeneratedImage(content=cut, extension='png')
+                    reply = 'Removed the background — everything else is exactly as it was. The picture is now transparent.'
+            # Words that must be exact get AI artwork with the words lettered
+            # on top by the server: a poster (brand name, price, contact
+            # details — myapp/poster.py), a logo with a name, or any picture
+            # with words in quotes (myapp/lettering.py). Anything else is
+            # drawn entirely by the image model, as before.
+            if generated is None and not source_image:
+                generated = (
+                    poster.make_poster(prompt) or lettering.make_logo(prompt) or lettering.make_text_picture(prompt)
+                )
             if generated is None:
                 generated = image_generation.generate_image(prompt, source_image or None)
         except image_generation.ImageGenerationError as exc:

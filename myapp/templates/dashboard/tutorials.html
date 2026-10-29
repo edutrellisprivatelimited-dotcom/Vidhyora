@@ -1,0 +1,347 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Video Tutorials{% endblock %}
+{% block page_title %}Video Tutorials{% endblock %}
+
+{% block extra_head %}
+<style>
+.flash{background:#e8f8ee;color:#177245;border-radius:12px;padding:.85rem 1rem;font-size:.88rem;font-weight:600;margin-bottom:1.2rem}
+.flash.error{background:#fee2e2;color:#b91c1c}
+.page-note{font-size:.85rem;color:var(--text);margin:-.6rem 0 1.3rem;line-height:1.6}
+.tv-upload{padding:1.3rem 1.4rem}
+.tv-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+@media (max-width:760px){.tv-grid{grid-template-columns:1fr}}
+.tv-drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.4rem;text-align:center;border:2px dashed var(--line);border-radius:14px;padding:1.4rem 1rem;background:var(--bg-alt);cursor:pointer;transition:border-color .15s,background .15s;min-height:150px}
+.tv-drop:hover,.tv-drop.over{border-color:var(--red);background:#fff5f6}
+.tv-drop i{font-size:1.6rem;color:var(--red)}
+.tv-drop b{font-size:.9rem;color:var(--head)}
+.tv-drop small{font-size:.75rem;color:#9aa3b0}
+.tv-picked{display:flex;align-items:center;gap:.8rem;border:1.5px solid var(--line);border-radius:14px;padding:.7rem;background:#fff}
+.tv-picked img,.tv-picked .tv-noimg{width:54px;height:96px;object-fit:cover;border-radius:8px;background:#111;flex:none}
+.tv-noimg{display:flex;align-items:center;justify-content:center;color:#fff}
+.tv-picked b{display:block;font-size:.85rem;color:var(--head);word-break:break-all}
+.tv-picked small{display:block;font-size:.75rem;color:var(--text);margin-top:.15rem}
+.tv-picked button{margin-left:auto}
+.tv-progress{margin-top:1rem;border:1.5px solid var(--line);border-radius:14px;padding:.9rem 1rem;background:var(--bg-alt)}
+.tv-progress-top{display:flex;justify-content:space-between;gap:1rem;font-size:.82rem;font-weight:700;color:var(--head);margin-bottom:.5rem}
+.tv-progress-top span:last-child{color:var(--text);font-weight:600}
+.tv-bar{height:10px;border-radius:10px;background:#e9ecf1;overflow:hidden}
+.tv-bar span{display:block;height:100%;width:0;background:var(--red);border-radius:10px;transition:width .25s}
+.tv-error{margin-top:.8rem;background:#fee2e2;color:#b91c1c;border-radius:10px;padding:.7rem .9rem;font-size:.82rem;font-weight:600}
+.tv-row{display:flex;gap:1rem;padding:1.1rem 1.4rem;border-bottom:1px solid var(--line);align-items:flex-start}
+.tv-row:last-child{border-bottom:none}
+.tv-thumb{width:68px;height:120px;border-radius:10px;object-fit:cover;background:#111;flex:none;display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.2rem}
+.tv-main{flex:1;min-width:0}
+.tv-title{font-size:.95rem;font-weight:800;color:var(--head)}
+.tv-desc{font-size:.8rem;color:var(--text);margin:.2rem 0 .4rem}
+.tv-facts{display:flex;flex-wrap:wrap;gap:.3rem 1rem;font-size:.75rem;color:var(--text)}
+.tv-facts b{color:var(--head)}
+.tv-actions{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.7rem}
+.tv-btn{border:1.5px solid var(--line);background:#fff;color:var(--head);border-radius:10px;padding:.4rem .75rem;font:inherit;font-size:.76rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:.35rem}
+.tv-btn:hover{border-color:var(--red);color:var(--red)}
+.tv-btn.danger{border-color:#f3b7bf;color:var(--red)}
+.tv-btn.danger:hover{background:var(--red);color:#fff}
+.tv-btn:disabled{opacity:.4;cursor:default}
+.badge.tv-on{background:#e8fbf0;color:#1da851}
+.badge.tv-off{background:#f1f3f6;color:#6b7280}
+.badge.tv-wait{background:#fff7e6;color:#b45309}
+.tv-edit{margin-top:.8rem;border:1.5px solid var(--line);border-radius:12px;padding:.9rem;background:var(--bg-alt)}
+.tv-edit[hidden],.tv-preview[hidden],.tv-drop[hidden],.tv-picked[hidden],.tv-progress[hidden],.tv-error[hidden],.tv-picked [hidden]{display:none}
+.tv-preview{margin-top:.8rem}
+.tv-preview video{width:220px;max-width:100%;aspect-ratio:9/16;background:#000;border-radius:12px;object-fit:contain}
+.tv-none{padding:2rem 1.4rem;text-align:center;font-size:.85rem;color:#9aa3b0}
+.tv-none i{display:block;font-size:1.8rem;margin-bottom:.5rem;color:#d0d5dd}
+</style>
+{% endblock %}
+
+{% block content %}
+{% for message in messages %}
+<div class="flash {{ message.tags }}"><i class="fas {% if message.tags == 'error' %}fa-circle-exclamation{% else %}fa-circle-check{% endif %}"></i> {{ message }}</div>
+{% endfor %}
+
+<p class="page-note">Videos you upload here appear for every logged-in user under profile menu → <b>Video tutorials</b>, in the order below. They play in a tall pop-up with no download button. <b>Upright (9:16) MP4 videos fit the player best.</b> Untick <b>Show to users</b> to hide one without deleting it.</p>
+
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="stat-ico"><i class="fas fa-circle-play"></i></div>
+    <div><div class="stat-num">{{ visible_count }}</div><div class="stat-lbl">Shown to users · {{ videos|length }} in total</div></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-ico"><i class="fab fa-dropbox"></i></div>
+    <div><div class="stat-num">{% if dropbox_on %}On{% else %}Off{% endif %}</div><div class="stat-lbl">{% if dropbox_on %}Videos are also kept safe in Dropbox{% else %}Dropbox is not connected — a redeploy may remove videos{% endif %}</div></div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h3><i class="fas fa-cloud-arrow-up"></i> Upload a new video</h3></div>
+  <form class="tv-upload" id="tvUploadForm" data-start="{% url 'dashboard_tutorial_upload_start' %}" data-max="{{ max_mb }}">
+    {% csrf_token %}
+    <div class="tv-grid">
+      <div>
+        <div class="form-group">
+          <label for="tvTitle">Title</label>
+          <input type="text" id="tvTitle" name="title" maxlength="120" placeholder="e.g. How to make a poster" required>
+        </div>
+        <div class="form-group">
+          <label for="tvDescription">Short description <span style="font-weight:500;color:#9aa3b0">(optional)</span></label>
+          <textarea id="tvDescription" name="description" maxlength="300" rows="3" placeholder="One line about what the video shows"></textarea>
+        </div>
+      </div>
+      <div>
+        <input type="file" id="tvFile" accept="video/mp4,video/webm,video/quicktime,.mp4,.m4v,.webm,.mov" hidden>
+        <label class="tv-drop" id="tvDrop" for="tvFile">
+          <i class="fas fa-film"></i>
+          <b>Choose a video, or drop it here</b>
+          <small>{{ extensions }} · up to {{ max_mb }} MB</small>
+        </label>
+        <div class="tv-picked" id="tvPicked" hidden>
+          <img id="tvPickedImg" alt="" hidden><span class="tv-noimg" id="tvPickedNoImg"><i class="fas fa-film"></i></span>
+          <div><b id="tvPickedName"></b><small id="tvPickedMeta"></small></div>
+          <button type="button" class="tv-btn" id="tvPickAgain">Change</button>
+        </div>
+      </div>
+    </div>
+    <div class="form-actions" style="margin-top:.4rem">
+      <button type="submit" class="btn btn-primary" id="tvUploadBtn"><i class="fas fa-upload"></i> Upload video</button>
+    </div>
+    <div class="tv-progress" id="tvProgress" hidden>
+      <div class="tv-progress-top"><span id="tvProgressLabel">Uploading…</span><span id="tvProgressMeta"></span></div>
+      <div class="tv-bar"><span id="tvBar"></span></div>
+      <div class="form-actions" style="margin-top:.8rem"><button type="button" class="tv-btn danger" id="tvCancel"><i class="fas fa-xmark"></i> Cancel upload</button></div>
+    </div>
+    <div class="tv-error" id="tvError" hidden></div>
+  </form>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h3><i class="fas fa-list-ol"></i> Your videos</h3><span style="font-size:.78rem;color:var(--text)">Users see them in this order</span></div>
+  {% for video in videos %}
+  <div class="tv-row">
+    {% if video.poster %}<img class="tv-thumb" src="{{ video.poster }}" alt="">{% else %}<span class="tv-thumb"><i class="fas fa-film"></i></span>{% endif %}
+    <div class="tv-main">
+      <div>
+        <span class="tv-title">{{ video.title }}</span>
+        {% if video.status == 'ready' %}
+          {% if video.is_active %}<span class="badge tv-on">Shown to users</span>{% else %}<span class="badge tv-off">Hidden</span>{% endif %}
+        {% else %}
+          <span class="badge tv-wait">Upload not finished · {{ video.percent }}%</span>
+        {% endif %}
+      </div>
+      {% if video.description %}<div class="tv-desc">{{ video.description }}</div>{% endif %}
+      <div class="tv-facts">
+        {% if video.length_label %}<span>Length <b>{{ video.length_label }}</b></span>{% endif %}
+        <span>Size <b>{{ video.size_label }}</b></span>
+        <span>Added <b>{{ video.created_at|date:"d M Y" }}</b>{% if video.uploaded_by %} by <b>{{ video.uploaded_by.email|default:video.uploaded_by.username }}</b>{% endif %}</span>
+        {% if video.status == 'ready' %}
+        <span>{% if video.dropbox_path %}<i class="fab fa-dropbox"></i> Saved in Dropbox{% elif dropbox_on %}<i class="fas fa-spinner"></i> Copying to Dropbox…{% else %}<i class="fas fa-triangle-exclamation"></i> Only on this server{% endif %}</span>
+        {% endif %}
+      </div>
+      <div class="tv-actions">
+        {% if video.status == 'ready' %}
+        <button type="button" class="tv-btn" data-tv-toggle="preview-{{ video.pk }}"><i class="fas fa-play"></i> Preview</button>
+        <button type="button" class="tv-btn" data-tv-toggle="edit-{{ video.pk }}"><i class="fas fa-pen"></i> Edit</button>
+        {% endif %}
+        <form method="post" action="{% url 'dashboard_tutorial_move' video.pk 'up' %}">{% csrf_token %}<button type="submit" class="tv-btn" title="Move up"{% if forloop.first %} disabled{% endif %}><i class="fas fa-arrow-up"></i></button></form>
+        <form method="post" action="{% url 'dashboard_tutorial_move' video.pk 'down' %}">{% csrf_token %}<button type="submit" class="tv-btn" title="Move down"{% if forloop.last %} disabled{% endif %}><i class="fas fa-arrow-down"></i></button></form>
+        <form method="post" action="{% url 'dashboard_tutorial_delete' video.pk %}" onsubmit="return confirm('Delete this video? Users stop seeing it straight away, and it is removed from Dropbox too.');">
+          {% csrf_token %}<button type="submit" class="tv-btn danger"><i class="fas fa-trash"></i> Delete</button>
+        </form>
+      </div>
+      {% if video.status == 'ready' %}
+      <div class="tv-preview" id="preview-{{ video.pk }}" hidden>
+        <video controls preload="none" controlslist="nodownload" disablepictureinpicture data-src="{% url 'tutorial_video' video.token %}"{% if video.poster %} poster="{{ video.poster }}"{% endif %}></video>
+      </div>
+      <form class="tv-edit" id="edit-{{ video.pk }}" method="post" action="{% url 'dashboard_tutorial_edit' video.pk %}" hidden>
+        {% csrf_token %}
+        <div class="form-group"><label>Title</label><input type="text" name="title" maxlength="120" value="{{ video.title }}" required></div>
+        <div class="form-group"><label>Short description</label><textarea name="description" maxlength="300" rows="2">{{ video.description }}</textarea></div>
+        <div class="form-group form-check"><input type="checkbox" name="is_active" id="active-{{ video.pk }}"{% if video.is_active %} checked{% endif %}><label for="active-{{ video.pk }}">Show to users</label></div>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% empty %}
+  <div class="tv-none"><i class="fas fa-circle-play"></i>No videos yet. Upload the first one above.</div>
+  {% endfor %}
+</div>
+
+<script>
+(function(){
+  var form = document.getElementById('tvUploadForm');
+  if (!form || form.dataset.ready) return;
+  form.dataset.ready = '1';
+  var csrf = form.querySelector('[name=csrfmiddlewaretoken]').value;
+  var fileInput = document.getElementById('tvFile');
+  var drop = document.getElementById('tvDrop');
+  var picked = document.getElementById('tvPicked');
+  var pickedImg = document.getElementById('tvPickedImg');
+  var pickedNoImg = document.getElementById('tvPickedNoImg');
+  var titleInput = document.getElementById('tvTitle');
+  var uploadBtn = document.getElementById('tvUploadBtn');
+  var progress = document.getElementById('tvProgress');
+  var bar = document.getElementById('tvBar');
+  var label = document.getElementById('tvProgressLabel');
+  var meta = document.getElementById('tvProgressMeta');
+  var errorBox = document.getElementById('tvError');
+  var cancelBtn = document.getElementById('tvCancel');
+  var maxBytes = Number(form.dataset.max) * 1024 * 1024;
+  var file = null, poster = '', duration = 0, uploading = false, cancelled = false, videoId = null;
+
+  function mb(bytes){ return (bytes / (1024 * 1024)).toFixed(1) + ' MB'; }
+  function clock(seconds){
+    seconds = Math.max(0, Math.round(seconds));
+    var m = Math.floor(seconds / 60), s = seconds % 60;
+    return m + ':' + (s < 10 ? '0' : '') + s;
+  }
+  function showError(text){ errorBox.textContent = text; errorBox.hidden = !text; }
+
+  // Length and one frame for the cover, read in this browser before upload.
+  function readVideo(f){
+    poster = ''; duration = 0;
+    pickedImg.hidden = true; pickedNoImg.hidden = false;
+    var url = URL.createObjectURL(f);
+    var probe = document.createElement('video');
+    probe.muted = true; probe.preload = 'metadata'; probe.playsInline = true; probe.src = url;
+    probe.addEventListener('loadedmetadata', function(){
+      duration = isFinite(probe.duration) ? probe.duration : 0;
+      document.getElementById('tvPickedMeta').textContent = mb(f.size) + (duration ? ' · ' + clock(duration) : '');
+      probe.currentTime = Math.min(1, duration * 0.1 || 0);
+    });
+    probe.addEventListener('seeked', function(){
+      try {
+        var width = Math.min(360, probe.videoWidth || 360);
+        var height = Math.round(width * (probe.videoHeight || 640) / (probe.videoWidth || 360));
+        var canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(probe, 0, 0, width, height);
+        poster = canvas.toDataURL('image/jpeg', 0.72);
+        pickedImg.src = poster; pickedImg.hidden = false; pickedNoImg.hidden = true;
+      } catch (e) { poster = ''; }
+      URL.revokeObjectURL(url);
+    });
+    probe.addEventListener('error', function(){ URL.revokeObjectURL(url); });
+  }
+
+  function choose(f){
+    showError('');
+    if (!f) return;
+    if (!/\.(mp4|m4v|webm|mov)$/i.test(f.name)) { showError('That file type can’t be played in browsers. Choose an MP4 (best), WebM or MOV video.'); return; }
+    if (f.size > maxBytes) { showError('That video is ' + mb(f.size) + '; the limit is ' + form.dataset.max + ' MB. Export it again at 720p, or shorten it, and try once more.'); return; }
+    file = f;
+    document.getElementById('tvPickedName').textContent = f.name;
+    document.getElementById('tvPickedMeta').textContent = mb(f.size);
+    drop.hidden = true; picked.hidden = false;
+    if (!titleInput.value.trim()) {
+      titleInput.value = f.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
+    }
+    readVideo(f);
+  }
+
+  fileInput.addEventListener('change', function(){ choose(fileInput.files[0]); });
+  document.getElementById('tvPickAgain').addEventListener('click', function(){ fileInput.value = ''; fileInput.click(); });
+  ['dragenter', 'dragover'].forEach(function(name){
+    drop.addEventListener(name, function(e){ e.preventDefault(); drop.classList.add('over'); });
+  });
+  ['dragleave', 'drop'].forEach(function(name){
+    drop.addEventListener(name, function(e){ e.preventDefault(); drop.classList.remove('over'); });
+  });
+  drop.addEventListener('drop', function(e){ choose(e.dataTransfer.files[0]); });
+
+  function post(url, data){
+    return fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest' }, body: data })
+      .then(function(response){
+        return response.json().catch(function(){ return { detail: 'The server did not answer properly.' }; })
+          .then(function(body){ return { ok: response.ok, status: response.status, body: body }; });
+      });
+  }
+  function wait(ms){ return new Promise(function(resolve){ setTimeout(resolve, ms); }); }
+
+  function sendFrom(offset, chunk, started, tries){
+    if (cancelled) return Promise.reject(new Error('cancelled'));
+    if (offset >= file.size) return Promise.resolve();
+    var data = new FormData();
+    data.append('offset', String(offset));
+    data.append('chunk', file.slice(offset, offset + chunk), 'chunk');
+    return post('/store/dashboard/tutorials/' + videoId + '/upload/chunk/', data).then(function(result){
+      if (result.ok || result.status === 409) {
+        var done = result.body.received;
+        var seconds = (Date.now() - started) / 1000;
+        var speed = done / Math.max(seconds, 0.5);
+        bar.style.width = (done / file.size * 100).toFixed(1) + '%';
+        label.textContent = 'Uploading… ' + Math.floor(done / file.size * 100) + '%';
+        meta.textContent = mb(done) + ' of ' + mb(file.size) + ' · about ' + clock((file.size - done) / Math.max(speed, 1)) + ' left';
+        return sendFrom(done, chunk, started, 0);
+      }
+      throw new Error(result.body.detail || 'The upload stopped.');
+    }, function(){
+      // Network blip: wait and send the same piece again, a few times.
+      if (tries >= 5) throw new Error('The connection dropped. Check your internet and upload again.');
+      label.textContent = 'Connection lost — trying again…';
+      return wait(2000 * (tries + 1)).then(function(){ return sendFrom(offset, chunk, started, tries + 1); });
+    });
+  }
+
+  function warnLeave(e){ e.preventDefault(); e.returnValue = ''; }
+
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    showError('');
+    if (uploading) return;
+    if (!file) { showError('Choose a video first.'); return; }
+    if (!titleInput.value.trim()) { showError('Give the video a title.'); titleInput.focus(); return; }
+    uploading = true; cancelled = false;
+    uploadBtn.disabled = true;
+    progress.hidden = false; bar.style.width = '0'; label.textContent = 'Starting…'; meta.textContent = '';
+    window.addEventListener('beforeunload', warnLeave);
+    var start = new FormData();
+    start.append('title', titleInput.value.trim());
+    start.append('description', document.getElementById('tvDescription').value.trim());
+    start.append('name', file.name);
+    start.append('size', String(file.size));
+    post(form.dataset.start, start).then(function(result){
+      if (!result.ok) throw new Error(result.body.detail || 'Could not start the upload.');
+      videoId = result.body.id;
+      return sendFrom(0, result.body.chunk_bytes, Date.now(), 0);
+    }).then(function(){
+      label.textContent = 'Finishing…';
+      var finish = new FormData();
+      finish.append('poster', poster);
+      finish.append('duration', String(Math.round(duration)));
+      return post('/store/dashboard/tutorials/' + videoId + '/upload/finish/', finish);
+    }).then(function(result){
+      if (!result.ok) throw new Error(result.body.detail || 'Could not finish the upload.');
+      window.removeEventListener('beforeunload', warnLeave);
+      label.textContent = 'Uploaded! Users can watch it now.';
+      bar.style.width = '100%';
+      setTimeout(function(){ window.location.reload(); }, 700);
+    }).catch(function(error){
+      window.removeEventListener('beforeunload', warnLeave);
+      uploading = false; uploadBtn.disabled = false; progress.hidden = true;
+      if (error.message !== 'cancelled') showError(error.message);
+    });
+  });
+
+  cancelBtn.addEventListener('click', function(){
+    if (!uploading || !confirm('Stop this upload?')) return;
+    cancelled = true;
+    if (videoId) post('/store/dashboard/tutorials/' + videoId + '/delete/', new FormData());
+  });
+
+  document.querySelectorAll('[data-tv-toggle]').forEach(function(button){
+    button.addEventListener('click', function(){
+      var box = document.getElementById(button.getAttribute('data-tv-toggle'));
+      if (!box) return;
+      box.hidden = !box.hidden;
+      var player = box.querySelector('video[data-src]');
+      if (player) {
+        if (!box.hidden) { if (!player.src) player.src = player.getAttribute('data-src'); player.play().catch(function(){}); }
+        else player.pause();
+      }
+    });
+  });
+  document.querySelectorAll('.tv-preview video').forEach(function(player){
+    player.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+  });
+})();
+</script>
+{% endblock %}

@@ -1,12 +1,19 @@
+import posixpath
+import re
+
 from django.conf import settings
-from django.conf.urls.static import static
 from django.contrib import admin
+from django.http import Http404
 from django.urls import path, re_path, include
 from django.contrib.sitemaps.views import sitemap
 from django.views.generic import TemplateView, RedirectView
+from django.views.static import serve
 
+from myapp.login_guard import AdminLoginForm
 from myapp.sitemaps import StaticViewSitemap
 from myapp.views import custom_404
+
+admin.site.login_form = AdminLoginForm
 
 sitemaps = {
     'static': StaticViewSitemap,
@@ -40,8 +47,30 @@ urlpatterns = [
     ),
 ]
 
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+# Only the media folders that hold public pictures/videos are served, with or
+# without DEBUG. Everything else under media/ (call recordings in ai_calls/,
+# YouTube downloads, …) is private and only reachable through views that check
+# who is asking (e.g. /AI/api/calls/<id>/audio/).
+PUBLIC_MEDIA_FOLDERS = (
+    'avatars', 'pwa', 'branding', 'products', 'categories', 'about', 'ai_generated', 'ai_videos',
+)
+
+
+def public_media(request, path):
+    # Checked again after resolving "..", so avatars/../ai_calls/… can't
+    # climb from a public folder into a private one.
+    path = posixpath.normpath(path).lstrip('/')
+    if '\\' in path or path.split('/', 1)[0] not in PUBLIC_MEDIA_FOLDERS:
+        raise Http404
+    return serve(request, path, document_root=settings.MEDIA_ROOT)
+
+
+urlpatterns += [
+    re_path(
+        r'^%s(?P<path>(?:%s)/.+)$' % (re.escape(settings.MEDIA_URL.lstrip('/')), '|'.join(PUBLIC_MEDIA_FOLDERS)),
+        public_media,
+    ),
+]
 
 # Catch-all: renders the custom 404 template for any unmatched URL. Django only
 # consults handler404 when DEBUG=False, so with DEBUG=True it would otherwise

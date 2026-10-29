@@ -1245,6 +1245,9 @@ _IMAGE_EDIT_ONLY_RE = re.compile(
     # followed by one of the known image-shaped nouns.
     rf"\b(?:{_IMAGE_EDIT_ONLY_VERB})\b|"
     rf"\buse\s+(?:this|that|the)\s+(?:{_IMAGE_GEN_NOUN})\b|"
+    # "make the background transparent" (myapp/cutout.py does it exactly).
+    r"\bmake\s+(?:it|this|the\s+(?:image|picture|photo|logo|background|bg))\s+(?:background\s+)?transparent\b|"
+    r"\btransparent\s+(?:background|bg|png)\b|"
     r"\b(?:make|mack)\s+(?:(?:this|it)\s+)?(?:at\s+)?"
     r"(?:night|nighttime|day|daytime|sunset|sunrise|evening|morning)\b|"
     # Very short continuation prompts only have edit meaning because this

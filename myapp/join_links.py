@@ -24,8 +24,9 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
+from myapp import login_guard
 from myapp.models import JoinLink, JoinLinkSignup, StoreProfile
-from myapp.views import _merge_session_ai_chats_into_user, _parse_json_body, dashboard_staff_required
+from myapp.views import _format_wait_time, _merge_session_ai_chats_into_user, _parse_json_body, dashboard_staff_required
 
 # key -> (label, days, price in ₹). The join page shows only the label; the
 # price is for the admin panel, so staff know what each joiner owes.
@@ -202,6 +203,9 @@ def _join(request, token):
         if account:
             if link.signups.filter(user=account).exists():
                 return _error('This account has already joined with this link. Log in on the home page instead.')
+            wait = login_guard.wait_seconds(request, account.username)
+            if wait:
+                return _error(f'Too many wrong passwords. Please wait {_format_wait_time(wait)} and try again.', 429)
             user = authenticate(request, username=account.username, password=password)
             if user is None:
                 return _error('That password is not right for this account. Try again.')

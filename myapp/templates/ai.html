@@ -488,10 +488,66 @@ header{background:var(--header-bg);backdrop-filter:blur(8px);border-bottom:1px s
 .guide-copy{border:1px solid var(--line);border-radius:8px;width:30px;height:30px;background:var(--surface);color:#9aa3b0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:.75rem}
 .guide-copy:hover{color:var(--red);border-color:var(--red)}
 .guide-copy.copied{color:#1fa855;border-color:#1fa855}
+.guide-text{margin:0 0 .6rem;font-size:.8rem;line-height:1.55;color:var(--text)}
+.guide-text b{color:var(--head)}
+.guide-new{font-size:.58rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:.08rem .35rem;border-radius:50px;background:var(--red);color:#fff}
+/* Terminal commands and things typed outside the chat: copy only, no "Try it". */
+.guide-cmd p{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.74rem;overflow-wrap:anywhere}
+.guide-cmd-label{font-size:.66rem;font-weight:700;color:#9aa3b0;white-space:nowrap}
+.guide-open{display:inline-flex;align-items:center;gap:.4rem;margin:.1rem 0 .6rem}
+/* A prompt that needs the user's own picture attached. */
+.guide-need,.guide-need-inline{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:rgba(var(--accent-rgb),.13);color:var(--red);font-size:.66rem;vertical-align:middle}
+.guide-need-inline{width:18px;height:18px;font-size:.58rem}
+/* "Video tutorials": an upright (9:16) player with the other clips below. */
+.tut-backdrop{z-index:51}
+.tut-modal{position:fixed;z-index:52;left:50%;top:50%;transform:translate(-50%,-50%);width:min(420px,calc(100vw - 24px));max-height:calc(100dvh - 24px);display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:22px;box-shadow:0 24px 70px rgba(0,0,0,.35);overflow:hidden;animation:tutIn .22s ease}
+.tut-modal[hidden]{display:none}
+@keyframes tutIn{from{opacity:0;transform:translate(-50%,-48%) scale(.97)}to{opacity:1;transform:translate(-50%,-50%)}}
+.tut-head{flex:none;display:flex;align-items:flex-start;gap:.75rem;padding:.85rem .95rem .7rem 1.1rem}
+.tut-head-text{flex:1;min-width:0}
+.tut-kicker{display:flex;align-items:center;gap:.4rem;margin:0 0 .15rem;font-size:.68rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--red)}
+.tut-kicker span{color:var(--text);font-weight:700;letter-spacing:0;text-transform:none}
+.tut-title{margin:0;font-size:1rem;font-weight:800;color:var(--head);line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tut-close{flex:none;width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--bg-alt);color:var(--head);cursor:pointer;display:flex;align-items:center;justify-content:center}
+.tut-close:hover{border-color:var(--red);color:var(--red)}
+.tut-stage{position:relative;flex:none;margin:0 auto;height:min(64dvh,600px);aspect-ratio:9/16;max-width:calc(100% - 1.5rem);background:#000;border-radius:16px;overflow:hidden}
+.tut-stage video{width:100%;height:100%;object-fit:contain;background:#000;display:block}
+.tut-overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.7rem;padding:1rem;text-align:center;background:rgba(0,0,0,.72);color:#fff;font-size:.82rem;font-weight:600}
+.tut-overlay[hidden]{display:none}
+.tut-nav{position:absolute;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:50%;border:none;background:rgba(0,0,0,.45);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s,background .15s}
+.tut-nav.prev{left:.5rem}
+.tut-nav.next{right:.5rem}
+.tut-stage:hover .tut-nav:not([hidden]),.tut-nav:focus-visible{opacity:1}
+.tut-nav:hover{background:rgba(0,0,0,.7)}
+.tut-nav[hidden]{display:none}
+@media (hover:none){.tut-nav:not([hidden]){opacity:.85}}
+.tut-desc{flex:none;margin:.65rem 1.1rem 0;font-size:.78rem;line-height:1.5;color:var(--text)}
+.tut-desc[hidden]{display:none}
+.tut-list{flex:none;display:flex;gap:.55rem;overflow-x:auto;padding:.75rem 1.1rem .95rem;scrollbar-width:thin;scroll-snap-type:x proximity}
+.tut-list:empty{display:none}
+.tut-item{flex:0 0 auto;width:96px;display:flex;flex-direction:column;gap:.3rem;border:none;background:none;padding:0;cursor:pointer;text-align:left;scroll-snap-align:start;font-family:inherit}
+.tut-thumb{position:relative;width:96px;height:132px;border-radius:12px;overflow:hidden;background:#111;border:2px solid transparent;display:flex;align-items:center;justify-content:center;color:#fff;transition:border-color .15s,transform .15s}
+.tut-thumb img{width:100%;height:100%;object-fit:cover}
+.tut-thumb small{position:absolute;right:.3rem;bottom:.3rem;background:rgba(0,0,0,.7);color:#fff;font-size:.6rem;font-weight:700;padding:.05rem .3rem;border-radius:5px}
+.tut-item:hover .tut-thumb{transform:translateY(-2px)}
+.tut-item.active .tut-thumb{border-color:var(--red)}
+.tut-item.active .tut-thumb::after{content:'\f04b';font:900 .7rem 'Font Awesome 6 Free';position:absolute;left:.3rem;top:.3rem;width:20px;height:20px;border-radius:50%;background:var(--red);color:#fff;display:flex;align-items:center;justify-content:center}
+.tut-item b{font-size:.7rem;font-weight:700;line-height:1.3;color:var(--head);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.tut-item.active b{color:var(--red)}
+.tut-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.6rem;height:100%;padding:1.5rem;text-align:center;color:#cfd4dc;font-size:.82rem}
+.tut-empty i{font-size:1.8rem;color:#fff;opacity:.6}
+@media (max-width:520px){
+  .tut-modal{width:100vw;max-height:100dvh;height:100dvh;border-radius:0;border:none}
+  .tut-stage{height:auto;flex:1 1 auto;min-height:0;width:calc(100% - 1.5rem);aspect-ratio:auto;max-width:none}
+}
 @media (max-width:520px){
   .guide-modal{width:calc(100vw - 16px);max-height:calc(100dvh - 16px)}
   .guide-prompt{flex-direction:column;align-items:stretch;gap:.45rem}
   .guide-prompt-actions{justify-content:flex-end}
+  /* One swipeable row of topics, so the steps keep most of a phone screen. */
+  .guide-topics{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:0 -1.15rem;padding:0 1.15rem .15rem}
+  .guide-topics::-webkit-scrollbar{display:none}
+  .guide-topics button{flex:none}
 }
 .support-modal-backdrop{z-index:51}
 .support-contact-list{display:flex;flex-direction:column;gap:.7rem;margin:.9rem 0 .25rem}
@@ -625,6 +681,94 @@ header{background:var(--header-bg);backdrop-filter:blur(8px);border-bottom:1px s
 .api-key-reveal-label{font-size:.74rem;font-weight:700;color:var(--red);margin:0 0 .5rem}
 .api-key-value{font-family:monospace;font-size:.78rem;color:var(--head);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:.6rem .7rem;margin-bottom:.6rem;word-break:break-all;user-select:all}
 .api-instructions-code{background:var(--bg-alt);border:1px solid var(--line);border-radius:10px;padding:.8rem .9rem;font-family:monospace;font-size:.72rem;line-height:1.55;color:var(--head);white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 .85rem}
+/* Get API panel: tabs, usage tiles and charts, model keys, reference tables. */
+.api-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:.3rem;padding:.25rem;border:1px solid var(--line);border-radius:12px;background:var(--bg-alt);margin:0 0 1rem}
+.api-tab{border:none;background:transparent;color:var(--text);font:700 .76rem var(--font-body),sans-serif;padding:.55rem .4rem;border-radius:9px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:.4rem}
+.api-tab:hover{color:var(--head)}
+.api-tab.active{background:var(--surface);color:var(--red);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.api-pane[hidden]{display:none}
+.api-card{border:1px solid var(--line);border-radius:14px;padding:.85rem .95rem;background:var(--surface);margin:0 0 .85rem}
+.api-card-head{display:flex;align-items:baseline;justify-content:space-between;gap:.6rem;margin:0 0 .65rem}
+.api-card-head h4,.api-card-title{font-size:.84rem;font-weight:800;color:var(--head);margin:0}
+.api-card-title{margin-bottom:.5rem}
+.api-card-head span{font-size:.7rem;color:var(--text)}
+.api-card .account-help{margin:.2rem 0 .6rem;line-height:1.55}
+.api-card .account-form-actions{margin-top:.2rem}
+.api-key-line{display:flex;flex-wrap:wrap;align-items:center;gap:.45rem;font-size:.8rem;font-weight:700;color:var(--head);margin:0 0 .3rem}
+.api-key-line code{font-family:monospace;font-size:.76rem;background:var(--bg-alt);border:1px solid var(--line);border-radius:6px;padding:.08rem .4rem}
+.api-key-line small{font-weight:500;font-size:.7rem;color:var(--text)}
+.api-dot{width:8px;height:8px;border-radius:50%;background:#9aa3b0;flex:none}
+.api-dot.on{background:var(--red);box-shadow:0 0 0 3px rgba(var(--accent-rgb),.18)}
+.api-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.6rem;margin:0 0 .85rem}
+.api-stat{display:flex;flex-direction:column;gap:.15rem;border:1px solid var(--line);border-radius:12px;padding:.7rem .8rem;background:var(--bg-alt);min-width:0}
+.api-stat-label{font-size:.68rem;font-weight:700;color:var(--text)}
+.api-stat-value{font-size:1.45rem;font-weight:800;color:var(--head);line-height:1.15;font-variant-numeric:tabular-nums}
+.api-stat-word{font-size:1.05rem;padding:.2rem 0}
+.api-stat-sub{font-size:.66rem;color:var(--text)}
+.api-meter{display:block;height:5px;border-radius:5px;background:rgba(var(--accent-rgb),.15);margin-top:.35rem;overflow:hidden}
+.api-meter span{display:block;height:100%;border-radius:5px;background:var(--red)}
+.api-cols{display:grid;grid-template-columns:repeat(7,1fr);gap:.25rem;align-items:end;border-bottom:1px solid var(--line);padding-top:1.1rem;margin-bottom:1.4rem}
+.api-col{position:relative;display:flex;flex-direction:column;align-items:center;outline:none;cursor:default}
+/* The bar's height is a % of this box, so the value label sits above the box, not in it. */
+.api-col-plot{position:relative;height:110px;width:100%;display:flex;align-items:flex-end;justify-content:center}
+.api-col-bar{position:relative;display:block;width:min(24px,70%);border-radius:4px 4px 0 0;background:rgba(var(--accent-rgb),.45);transition:background .15s}
+.api-col.today .api-col-bar{background:var(--red)}
+.api-col:hover .api-col-bar,.api-col:focus-visible .api-col-bar{background:var(--red-dark,var(--red))}
+.api-col-value{position:absolute;left:0;right:0;bottom:calc(var(--h) + 3px);text-align:center;font-size:.66rem;font-weight:700;color:var(--head);pointer-events:none}
+.api-col-day{position:absolute;top:calc(100% + .3rem);font-size:.64rem;color:var(--text);white-space:nowrap}
+.api-col.today .api-col-day{color:var(--head);font-weight:700}
+.api-col::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:var(--head);color:var(--surface);font-size:.66rem;font-weight:600;padding:.3rem .5rem;border-radius:7px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .12s;z-index:2}
+.api-col:hover::after,.api-col:focus-visible::after{opacity:1}
+.api-col:first-child::after{left:0;transform:none}
+.api-col:last-child::after{left:auto;right:0;transform:none}
+.api-empty-note{display:flex;align-items:center;gap:.5rem;font-size:.76rem;color:var(--text);margin:0;padding:.6rem 0}
+.api-empty-note i{color:var(--red)}
+.api-hbars{display:flex;flex-direction:column;gap:.45rem}
+.api-hbar{display:grid;grid-template-columns:minmax(90px,34%) 1fr auto;align-items:center;gap:.6rem}
+.api-hbar-name{font-size:.74rem;color:var(--head);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.api-hbar-track{height:10px;border-radius:0 4px 4px 0;background:transparent;display:block}
+.api-hbar-track span{display:block;height:100%;border-radius:0 4px 4px 0;background:var(--red)}
+.api-hbar-value{font-size:.72rem;font-weight:700;color:var(--head);font-variant-numeric:tabular-nums}
+.api-table-wrap{overflow-x:auto}
+.api-table{width:100%;border-collapse:collapse;font-size:.72rem;color:var(--text)}
+.api-table th{text-align:left;font-weight:700;color:var(--head);padding:.35rem .5rem;border-bottom:1px solid var(--line);white-space:nowrap}
+.api-table td{padding:.42rem .5rem;border-bottom:1px solid var(--line);vertical-align:top;line-height:1.45}
+.api-table tr:last-child td{border-bottom:none}
+.api-table code{font-family:monospace;font-size:.7rem;color:var(--head);background:var(--bg-alt);border:1px solid var(--line);border-radius:5px;padding:0 .25rem}
+.api-table-group td{font-weight:800;color:var(--head);background:var(--bg-alt);font-family:monospace}
+.api-fields td:first-child,.api-fields td:nth-child(2){white-space:nowrap}
+.api-status{display:inline-flex;align-items:center;gap:.3rem;font-weight:700;color:var(--head);white-space:nowrap}
+.api-status.ok i{color:#1fa855}
+.api-status.fail i{color:#e5484d}
+.api-link-btn{border:none;background:none;padding:0;color:var(--red);font:700 .7rem var(--font-body),sans-serif;cursor:pointer;text-decoration:underline}
+.api-lead{font-size:.76rem;margin:0 0 .75rem}
+.api-models{display:flex;flex-direction:column;gap:.5rem;margin:0 0 .85rem}
+.api-model{display:flex;align-items:center;gap:.75rem;border:1px solid var(--line);border-radius:12px;padding:.65rem .75rem;background:var(--bg-alt)}
+.api-model-main{flex:1;min-width:0}
+.api-model-main b{display:block;font-size:.82rem;color:var(--head)}
+.api-model-main small{display:block;font-size:.7rem;line-height:1.45;color:var(--text);margin-top:.1rem}
+.api-model-key{flex:none;display:inline-flex;align-items:center;gap:.45rem;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:.35rem .55rem;cursor:pointer;color:var(--text);font-size:.7rem}
+.api-model-key code{font-family:monospace;font-size:.76rem;font-weight:700;color:var(--head)}
+.api-model-key:hover{border-color:var(--red);color:var(--red)}
+.api-model-key.copied{border-color:#1fa855;color:#1fa855}
+.api-model-key.static{cursor:default}
+.api-langs{display:flex;flex-wrap:wrap;gap:.3rem}
+.api-lang{font-size:.68rem;color:var(--text);border:1px solid var(--line);border-radius:50px;padding:.18rem .5rem;background:var(--bg-alt)}
+.api-lang code{font-family:monospace;font-weight:700;color:var(--head)}
+.api-list{list-style:none;margin:0 0 .5rem;padding:0;display:flex;flex-direction:column;gap:.4rem}
+.api-list li{display:flex;gap:.55rem;align-items:baseline;font-size:.76rem;line-height:1.5;color:var(--text)}
+.api-list i{color:var(--red);width:14px;text-align:center;flex:none}
+.api-base{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;border:1px solid var(--line);border-radius:12px;padding:.55rem .7rem;background:var(--bg-alt);margin:0 0 .85rem}
+.api-base span{font-size:.7rem;font-weight:700;color:var(--text)}
+.api-base code{flex:1;min-width:0;font-family:monospace;font-size:.78rem;font-weight:700;color:var(--head);overflow-wrap:anywhere}
+.api-base .code-copy-btn{position:static}
+.api-pane .cc-steps{margin-bottom:.85rem}
+@media (max-width:520px){
+  .api-tab{font-size:.7rem;padding:.5rem .2rem}
+  .api-model{flex-direction:column;align-items:stretch}
+  .api-model-key{align-self:flex-start}
+  .api-hbar{grid-template-columns:minmax(80px,40%) 1fr auto}
+}
 .cc-hero{border:1px solid var(--line);background:var(--tint);border-radius:14px;padding:.95rem 1rem;margin-bottom:1rem}
 .cc-hero-title{display:flex;align-items:center;gap:.5rem;font-size:.95rem;font-weight:800;color:var(--head);margin:0 0 .35rem}
 .cc-hero-title i{color:var(--red)}
@@ -1285,6 +1429,27 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
 .search-btn.active{color:#fff;background:linear-gradient(145deg,#22c993,#078b68);border-color:#51e8b8;box-shadow:0 0 0 3px rgba(16,185,129,.16),0 5px 15px rgba(16,185,129,.32)}
 .search-btn.active::after{content:'Web search on';position:absolute;left:50%;bottom:calc(100% + 9px);transform:translateX(-50%);padding:.28rem .48rem;border-radius:6px;background:#087f5f;color:#fff;font-size:.62rem;font-weight:750;line-height:1;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,.2);pointer-events:none}
 .input-wrap.search-enabled{border-color:#10b981;box-shadow:0 0 0 3px rgba(16,185,129,.1)}
+/* Composer toolbar: a divider between the mode controls (model, GitHub, deep
+   research) and the input tools. Whatever room is left before Send is filled
+   by fitComposer() in the script: text labels on the tools, a "Send" pill and
+   a keyboard hint, each only while the row still fits on one line. */
+.composer-sep{flex:0 0 auto;width:1px;height:20px;background:var(--line);margin:0 .1rem}
+.tool-label,.send-label,.send-hint{display:none}
+.input-wrap>.tool-labeled{width:auto;padding:0 .7rem;border-radius:50px;gap:.38rem}
+.input-wrap>.tool-labeled .tool-label{display:inline;font-size:.74rem;font-weight:650;letter-spacing:.005em}
+.input-wrap>.tool-labeled:hover:not(:disabled){box-shadow:inset 0 0 0 1px var(--line)}
+.search-btn.tool-labeled.active::after{display:none}
+.input-wrap.send-pill #sendBtn{width:auto;padding:0 .8rem 0 1rem;border-radius:50px;gap:.45rem;font:700 .8rem var(--font-body),sans-serif;box-shadow:0 4px 14px rgba(var(--accent-rgb),.28)}
+.input-wrap.send-pill #sendBtn .send-label{display:inline}
+.input-wrap.send-pill #sendBtn i{font-size:.78rem}
+.input-wrap.send-pill #sendBtn:hover:not(:disabled){transform:translateY(-1px)}
+:root[data-skin="terminal"] .input-wrap.send-pill #sendBtn{border-radius:4px}
+.input-wrap.with-hint .send-hint{display:inline-flex;margin-left:auto;font-size:.68rem;color:var(--text);opacity:.85;white-space:nowrap;align-items:center;gap:.2rem}
+.input-wrap.with-hint .send-hint~#sendBtn{margin-left:.35rem}
+.send-hint kbd{font:600 .62rem var(--font-body),sans-serif;color:var(--head);background:var(--surface);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:.05rem .32rem}
+@media (min-width:900px){
+  .input-wrap{border-radius:20px;box-shadow:0 6px 24px rgba(0,0,0,.05),0 1px 2px rgba(0,0,0,.04)}
+}
 
 /* ---- model picker (dropdown, lives in the composer bar itself) ---- */
 .model-picker-wrap{position:relative;flex-shrink:0;align-self:center}
@@ -2210,6 +2375,8 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
               <button type="button" class="acct-menu-item" data-account-panel="coding" role="menuitem"><i class="fas fa-terminal"></i> Code-X</button>
               {% if ai_pwa_ready %}<button type="button" class="acct-menu-item" id="installAppMenuBtn" role="menuitem"><i class="fas fa-mobile-screen-button"></i> Install app</button>{% endif %}
               <button type="button" class="acct-menu-item" id="guideMenuBtn" role="menuitem"><i class="fas fa-circle-question"></i> How to use</button>
+              <button type="button" class="acct-menu-item" id="tutorialsMenuBtn" role="menuitem"><i class="fas fa-circle-play"></i> Video tutorials</button>
+              <button type="button" class="acct-menu-item" id="imageHelpMenuBtn" role="menuitem"><i class="fas fa-image"></i> Edit / create images</button>
               <button type="button" class="acct-menu-item" id="supportMenuBtn" role="menuitem"><i class="fas fa-headset"></i> Support</button>
               {% if ai_user.is_superuser %}<button type="button" class="acct-menu-item" data-account-panel="joinlinks" role="menuitem"><i class="fas fa-link"></i> Join by link</button>
               <a class="acct-menu-item" href="{% url 'dashboard_home' %}" role="menuitem"><i class="fas fa-gauge-high"></i> Admin Panel</a>
@@ -2339,24 +2506,194 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
 </section>
 
 {% if ai_user %}
+{# "Video tutorials": an upright player for the clips staff upload on the dashboard (myapp/tutorials.py). #}
+<div class="feature-modal-backdrop tut-backdrop" id="tutBackdrop" hidden></div>
+<section class="tut-modal" id="tutModal" hidden role="dialog" aria-modal="true" aria-labelledby="tutTitle">
+  <div class="tut-head">
+    <div class="tut-head-text">
+      <p class="tut-kicker"><i class="fas fa-circle-play"></i> Video tutorials <span id="tutCount"></span></p>
+      <h2 class="tut-title" id="tutTitle">Loading…</h2>
+    </div>
+    <button type="button" class="tut-close" id="tutClose" aria-label="Close video tutorials"><i class="fas fa-xmark"></i></button>
+  </div>
+  <div class="tut-stage" id="tutStage">
+    <video id="tutPlayer" playsinline controls preload="metadata" controlslist="nodownload noremoteplayback" disablepictureinpicture disableremoteplayback></video>
+    <div class="tut-overlay" id="tutOverlay" hidden><span class="aw-orbit"></span><span id="tutOverlayText">Getting the video ready…</span></div>
+    <button type="button" class="tut-nav prev" id="tutPrev" aria-label="Previous video"><i class="fas fa-chevron-left"></i></button>
+    <button type="button" class="tut-nav next" id="tutNext" aria-label="Next video"><i class="fas fa-chevron-right"></i></button>
+  </div>
+  <p class="tut-desc" id="tutDesc" hidden></p>
+  <div class="tut-list" id="tutList" role="list" aria-label="All tutorials"></div>
+</section>
+
+{# "Edit / create images": the wording the image features understand (ai_chat patterns, poster, lettering, cutout, image_edit), with one-click prompts. #}
+<div class="feature-modal-backdrop guide-backdrop" id="imgHelpBackdrop" hidden></div>
+<section class="feature-modal guide-modal" id="imgHelpModal" hidden role="dialog" aria-modal="true" aria-labelledby="imgHelpTitle">
+  <div class="guide-head">
+    <button type="button" class="feature-modal-close" id="imgHelpClose" aria-label="Close"><i class="fas fa-xmark"></i></button>
+    <p class="feature-modal-title" id="imgHelpTitle">Create and edit images</p>
+    <p class="guide-intro">The picture tools listen for certain words. Use the words below and you get the right result first time. Press <b>Use</b> to put a prompt in your message box (change the details, then send), or copy it. <span class="guide-need-inline"><i class="fas fa-paperclip"></i></span> marks prompts that need your picture attached.</p>
+    <nav class="guide-topics" aria-label="Image topics">
+      <button type="button" data-guide-jump="img-create"><i class="fas fa-wand-magic-sparkles"></i> Create</button>
+      <button type="button" data-guide-jump="img-words"><i class="fas fa-spell-check"></i> Logos &amp; exact words</button>
+      <button type="button" data-guide-jump="img-poster"><i class="fas fa-rectangle-ad"></i> Posters</button>
+      <button type="button" data-guide-jump="img-edit"><i class="fas fa-pen-to-square"></i> Edit a picture</button>
+      <button type="button" data-guide-jump="img-background"><i class="fas fa-eraser"></i> Remove background</button>
+      <button type="button" data-guide-jump="img-followup"><i class="fas fa-reply"></i> Change the last picture</button>
+      <button type="button" data-guide-jump="img-size"><i class="fas fa-crop-simple"></i> Size &amp; shape</button>
+      <button type="button" data-guide-jump="img-files"><i class="fas fa-file-pdf"></i> PDF, Word &amp; more</button>
+      <button type="button" data-guide-jump="img-tips"><i class="fas fa-lightbulb"></i> Tips</button>
+    </nav>
+  </div>
+  <div class="guide-body" id="imgHelpBody">
+    <article class="guide-section" id="img-create">
+      <h3><span class="guide-icon violet"><i class="fas fa-wand-magic-sparkles"></i></span> Create a new picture</h3>
+      <p class="guide-text">Start with a <b>doing word</b> and a <b>picture word</b> in the same sentence:</p>
+      <ul class="guide-tips">
+        <li><b>Doing words:</b> create, make, generate, draw, design, give me — or in Hindi <b>banao</b>, <b>bana do</b>, <b>bana ke do</b>.</li>
+        <li><b>Picture words:</b> image, photo, picture, logo, poster, wallpaper, banner, thumbnail, card, invitation, sticker, icon, avatar, illustration, Instagram post, story.</li>
+        <li>Or just describe the scene with two or more art words, like <b>cinematic</b>, <b>4k</b>, <b>watercolour</b>, <b>soft lighting</b>.</li>
+        <li>A question such as “how to make a poster?” gets a written answer, not a picture.</li>
+      </ul>
+      <div class="guide-prompts">
+        <div class="guide-prompt"><p>Create an image of a golden retriever puppy playing in autumn leaves, warm sunlight, photorealistic.</p><div class="guide-prompt-actions"><button type="button" class="guide-try">Use</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
+        <div class="guide-prompt"><p>Draw a cute cartoon robot reading a book, flat colours, plain white background.</p><div class="guide-prompt-actions"><button type="button" class="guide-try">Use</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
+        <div class="guide-prompt"><p>Ek ladki ki image banao jo park mein bench par baithi hai, sunset, realistic.</p><div class="guide-prompt-actions"><button type="button" class="guide-try">Use</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
+      </div>
+    </article>
+
+    <article class="guide-section" id="img-words">
+      <h3><span class="guide-icon blue"><i class="fas fa-spell-check"></i></span> Logos and words spelled exactly right</h3>
+      <p class="guide-text">The picture model is great at art but can’t spell. When you say the words like this, the art is drawn without letters and <b>your exact words are typed on top</b>, so nothing is misspelled:</p>
+      <ul class="guide-tips">
+        <li><b>Logos:</b> “logo for <b>Name</b>”, “logo with brand name <b>Name</b>”, or “logo called <b>Name</b>”. For a tagline add <b>tagline "Your words"</b>.</li>
+        <li><b>Any picture with words:</b> put the words in quotes — “a card that says <b>"Happy Birthday Riya"</b>”.</li>
+        <li>Write the name exactly how it should look — capital letters stay capital.</li>
+      </ul>
+      <div class="guide-prompts">
+        <div class="guide-prompt"><p>Create a logo for ClaudeChats, a friendly AI chat app, blue and purple gradient, modern.</p><div class="guide-prompt-actions"><button type="button" class="guide-try">Use</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
+        <div class="guide-prompt"><p>Make a logo with brand name Sweet Crumbs and tagline "Fresh Cakes Daily", a cupcake symbol, pastel pink.</p><div class="guide-prompt-actions"><button type="button" class="guide-try">Use</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
+        <div class="guide-prompt"><p>Create a birthday card image that says "Happy Birthday Riya" with balloons and confetti.</p><div class="guide-prompt-actions"><button type="button" class="guide-try">Use</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
+      </div>
+    </article>
+
+    <article class="guide-section" id="img-poster">
+      <h3><span class="guide-icon amber"><i class="fas fa-rectangle-ad"></i></span> Posters, flyers and social posts</h3>
+      <p class="guide-text">Say <b>poster</b>, <b>flyer</b>, <b>banner</b> or <b>Instagram post</b>, and include the real details — brand name, offer or price, phone, email, website. They are all printed exactly, in a clean layout.</p>
+      <div class="guide-prompts">
+        <div class="guide-prompt"><p>Instagram poster for my bakery Sweet Crumbs – Fresh Cakes Daily, cakes from ₹299. Call 9876543210, visit sweetcrumbs.in. Warm pastel background.</p><div class="guide-prompt-actions"><button type="button" class="guide-try">Use</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
+        <div class="guide-prompt"><p>Flyer for Yoga with Anu – morning batches at 6 AM, ₹999/month, call 9123456780, email anu@yogawithanu.in, calm green background.</p><div class="guide-prompt-actions"><button type="button" class="guide-try">Use</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
+      </div>
+    </article>
+
+    <article class="guide-section" id="img-edit">
+      <h3><span class="guide-icon"><i class="fas fa-pen-to-square"></i></span> Edit your own picture</h3>
+      <ol class="guide-steps">
+        <li>Attach the picture with the <b>paperclip</b> (or the <b>camera</b>).</li>
+        <li>Start with an <b>editing word</b>: change, replace, remove, add, put, make it…, convert, crop, blur, brighten, enhance, rotate — or <b>badlo</b>, <b>hatao</b>, <b>lagao</b>, <b>daalo</b>, <b>dikhao</b>.</li>
+        <li>Say <b>one</b> change at a time. Name the exact words if text should change.</li>
+      </ol>
+      <p class="guide-text">Without an editing word, an attached picture is <b>described</b>, not changed. Edits draw the picture again, so small details can differ.</p>
+      <div class="guide-prompts">
+        <div class="guide-prompt" data-photo="1"><p>Change the background to a beach at sunset and keep the person exactly the same.</p><div class="guide-prompt-actions"><span class="guide-need" title="Attach your picture"><i class="fas fa-paperclip"></i></span><button type="button" class="guide-try">Use</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
+        <div class="guide-prompt" data-photo="1"><p>Replace the text "ChatGPT" with "Claude" and keep everything else the same.</p><div class="guide-prompt-actions"><span class="guide-need" title="Attach your picture"><i class="fas fa-paperclip"></i></span><button type="button" class="guide-try">Use</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
+        <div class="guide-prompt" data-photo="1"><p>Convert this photo into a Ghibli-style anime picture.</p><div class="guide-prompt-actions"><span class="guide-need" title="Attach your picture"><i class="fas fa-paperclip"></i></span><button type="button" class="guide-try">Use</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
+        <div class="guide-prompt" data-photo="1"><p>Is ladki ko cafe me dikhao, coffee cup ke saath.</p><div class="guide-prompt-actions"><span class="guide-need" title="Attach your picture"><i class="fas fa-paperclip"></i></span><button type="button" class="guide-try">Use</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
+      </div>
+    </article>
+
+    <article class="guide-section" id="img-background">
+      <h3><span class="guide-icon blue"><i class="fas fa-eraser"></i></span> Remove the background</h3>
+      <p class="guide-text">Attach the picture (or ask right after one was made) and say <b>remove the background</b>, <b>make the background transparent</b> or <b>bg hatao</b>.</p>
+      <ul class="guide-tips">
+        <li><b>Plain backgrounds</b> — one colour, like a logo on black or a product on white — are cut out exactly: every other pixel stays the same and the picture becomes truly transparent.</li>
+        <li><b>Busy photo backgrounds</b> are drawn again with the change, so small details can differ.</li>
+      </ul>
+      <div class="guide-prompts">
+        <div class="guide-prompt" data-photo="1"><p>Remove the background</p><div class="guide-prompt-actions"><span class="guide-need" title="Attach your picture"><i class="fas fa-paperclip"></i></span><button type="button" class="guide-try">Use</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
+        <div class="guide-prompt" data-photo="1"><p>Make the background transparent</p><div class="guide-prompt-actions"><span class="guide-need" title="Attach your picture"><i class="fas fa-paperclip"></i></span><button type="button" class="guide-try">Use</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
+        <div class="guide-prompt" data-photo="1"><p>Change the background to plain white</p><div class="guide-prompt-actions"><span class="guide-need" title="Attach your picture"><i class="fas fa-paperclip"></i></span><button type="button" class="guide-try">Use</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
+      </div>
+    </article>
+
+    <article class="guide-section" id="img-followup">
+      <h3><span class="guide-icon violet"><i class="fas fa-reply"></i></span> Change the picture just made</h3>
+      <p class="guide-text">Straight after a picture appears, a few words are enough — no need to repeat everything. It works with things like pose, clothes, colours, background, lighting, time of day, angle and style.</p>
+      <div class="guide-prompts">
+        <div class="guide-prompt"><p>hands up pose</p><div class="guide-prompt-actions"><button type="button" class="guide-try">Use</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
+        <div class="guide-prompt"><p>red dress, beach background</p><div class="guide-prompt-actions"><button type="button" class="guide-try">Use</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
+        <div class="guide-prompt"><p>make it at night</p><div class="guide-prompt-actions"><button type="button" class="guide-try">Use</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
+        <div class="guide-prompt"><p>4k</p><div class="guide-prompt-actions"><button type="button" class="guide-try">Use</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
+      </div>
+      <p class="guide-text">After you write something else in between, use an editing word again: “change the dress in the last picture to blue”.</p>
+    </article>
+
+    <article class="guide-section" id="img-size">
+      <h3><span class="guide-icon amber"><i class="fas fa-crop-simple"></i></span> Size and shape</h3>
+      <ul class="guide-tips">
+        <li><b>Square (1:1):</b> logo, icon, avatar, profile picture, “square”.</li>
+        <li><b>Instagram / Facebook post (4:5):</b> “Instagram post”, “Facebook post”.</li>
+        <li><b>Tall (9:16):</b> story, reel, status, phone wallpaper, “portrait”, “vertical”.</li>
+        <li><b>Poster (3:4):</b> poster, flyer, invitation, A4, certificate.</li>
+        <li><b>Wide (16:9):</b> YouTube thumbnail, banner, desktop wallpaper, “landscape”.</li>
+        <li>Or give it exactly: <b>1080×1350</b>, <b>16:9</b>, “size 4:5”.</li>
+      </ul>
+      <div class="guide-prompts">
+        <div class="guide-prompt"><p>YouTube thumbnail for a cooking video about 10-minute paneer recipes, bold and colourful, 16:9.</p><div class="guide-prompt-actions"><button type="button" class="guide-try">Use</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
+        <div class="guide-prompt"><p>Phone wallpaper of a calm mountain lake at sunrise, soft pastel colours.</p><div class="guide-prompt-actions"><button type="button" class="guide-try">Use</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
+      </div>
+    </article>
+
+    <article class="guide-section" id="img-files">
+      <h3><span class="guide-icon blue"><i class="fas fa-file-pdf"></i></span> Put a picture in a file, or see it again</h3>
+      <div class="guide-prompts">
+        <div class="guide-prompt"><p>Add this image inside a PDF</p><div class="guide-prompt-actions"><button type="button" class="guide-try">Use</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
+        <div class="guide-prompt"><p>Put the last image into a PowerPoint</p><div class="guide-prompt-actions"><button type="button" class="guide-try">Use</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
+        <div class="guide-prompt"><p>Show the image again</p><div class="guide-prompt-actions"><button type="button" class="guide-try">Use</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
+      </div>
+      <p class="guide-text">Every picture you make is also kept in <b>My Images</b> in the profile menu.</p>
+    </article>
+
+    <article class="guide-section" id="img-tips">
+      <h3><span class="guide-icon amber"><i class="fas fa-lightbulb"></i></span> Tips for the best pictures</h3>
+      <ul class="guide-tips">
+        <li><b>Describe it fully:</b> subject, what it’s doing, place, style (photo, cartoon, 3D, watercolour), colours and mood.</li>
+        <li><b>Got a written answer instead of a picture?</b> Start again with “Create an image of…”.</li>
+        <li><b>Brand names, prices and phone numbers</b> come out right on logos and posters, and in quotes on anything else — see “Logos &amp; exact words”.</li>
+        <li><b>New idea? Press New chat,</b> so the earlier picture isn’t changed by mistake.</li>
+        <li><b>More images</b> in the sidebar has ready-made styles: tap one, add your subject, send.</li>
+        <li>You can make up to 20 pictures a day.</li>
+      </ul>
+    </article>
+  </div>
+</section>
+
 {# "How to use": every feature in short steps, with example prompts that can be tried in one click. #}
 <div class="feature-modal-backdrop guide-backdrop" id="guideBackdrop" hidden></div>
 <section class="feature-modal guide-modal" id="guideModal" hidden role="dialog" aria-modal="true" aria-labelledby="guideTitle">
   <div class="guide-head">
     <button type="button" class="feature-modal-close" id="guideClose" aria-label="Close guide"><i class="fas fa-xmark"></i></button>
     <p class="feature-modal-title" id="guideTitle">How to use {{ SITE_AI_BRAND_NAME }} AI</p>
-    <p class="guide-intro">Pick a topic. Each one has the steps and example prompts — press <b>Try it</b> to put a prompt in your message box, change the details, and send.</p>
+    <p class="guide-intro">Pick a topic. Each one has the steps and example prompts — press <b>Try it</b> to put a prompt in your message box, change the details, and send. New: <b>Code-X</b>, an AI coder for your terminal.</p>
+    <button type="button" class="guide-try guide-open" data-guide-tutorials><i class="fas fa-circle-play"></i> Watch video tutorials</button>
     <nav class="guide-topics" aria-label="Guide topics">
       <button type="button" data-guide-jump="guide-chat"><i class="fas fa-comments"></i> Chat</button>
+      <button type="button" data-guide-jump="guide-codex"><i class="fas fa-terminal"></i> Code-X <span class="guide-new">New</span></button>
       <button type="button" data-guide-jump="guide-images"><i class="fas fa-wand-magic-sparkles"></i> Images &amp; posters</button>
+      {% if ai_video_ready %}<button type="button" data-guide-jump="guide-video"><i class="fas fa-film"></i> Video</button>{% endif %}
       <button type="button" data-guide-jump="guide-files"><i class="fas fa-file-lines"></i> Files</button>
       <button type="button" data-guide-jump="guide-research"><i class="fas fa-magnifying-glass-chart"></i> Deep research</button>
       <button type="button" data-guide-jump="guide-web"><i class="fas fa-globe"></i> Web search</button>
       <button type="button" data-guide-jump="guide-attach"><i class="fas fa-paperclip"></i> Attachments</button>
+      <button type="button" data-guide-jump="guide-convert"><i class="fas fa-right-left"></i> Convert files</button>
       <button type="button" data-guide-jump="guide-reply"><i class="fas fa-reply"></i> Reply</button>
-      <button type="button" data-guide-jump="guide-voice"><i class="fas fa-microphone"></i> Voice</button>
+      <button type="button" data-guide-jump="guide-language"><i class="fas fa-language"></i> Language</button>
+      <button type="button" data-guide-jump="guide-voice"><i class="fas fa-microphone"></i> Voice &amp; calls</button>
+      <button type="button" data-guide-jump="guide-api"><i class="fas fa-key"></i> Developer API</button>
       <button type="button" data-guide-jump="guide-github"><i class="fab fa-github"></i> GitHub</button>
       <button type="button" data-guide-jump="guide-notes"><i class="fas fa-note-sticky"></i> Notes</button>
+      <button type="button" data-guide-jump="guide-account"><i class="fas fa-user-gear"></i> Your account</button>
+      <button type="button" data-guide-jump="guide-look"><i class="fas fa-palette"></i> Look &amp; feel</button>
       <button type="button" data-guide-jump="guide-tips"><i class="fas fa-lightbulb"></i> Tips</button>
     </nav>
   </div>
@@ -2374,6 +2711,39 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
       </div>
     </article>
 
+    {% with site_origin=request.scheme|add:"://"|add:request.get_host %}
+    <article class="guide-section" id="guide-codex">
+      <h3><span class="guide-icon blue"><i class="fas fa-terminal"></i></span> Code-X: an AI coder in your terminal</h3>
+      <p class="guide-text">Code-X works inside <b>OpenCode</b>, a free coding app that runs in your computer’s terminal. It reads your project, writes and fixes code, runs commands and explains what it did. Code-X is part of the premium plan.</p>
+      <ol class="guide-steps">
+        <li>Open your profile menu (top right) and choose <b>Code-X</b>.</li>
+        <li>Open a terminal — on Windows <b>PowerShell</b> or <b>Command Prompt</b>, on Mac or Linux <b>Terminal</b> — and paste the one command for your computer (below, or copy it from the Code-X panel). You don’t need to install anything first.</li>
+        <li>The command shows a short code and opens a page in your browser. Check the code is the same as in your terminal and press <b>Approve</b> (log in if asked).</li>
+        <li>Open a terminal <b>in your project folder</b> and type <b>opencode</b>. The first time, type <b>/init</b> so it studies your project.</li>
+        <li>Describe what you want in plain words. Press <b>Tab</b> to switch between <b>Plan</b> (only reads and suggests) and <b>Build</b> (changes files). It asks before it changes anything.</li>
+      </ol>
+      <div class="guide-prompts">
+        <div class="guide-prompt guide-cmd"><p>powershell -NoProfile -Command "irm {{ site_origin }}/start-coding/setup.ps1 | iex"</p><div class="guide-prompt-actions"><span class="guide-cmd-label">Windows</span><button type="button" class="guide-copy" aria-label="Copy command"><i class="fas fa-copy"></i></button></div></div>
+        <div class="guide-prompt guide-cmd"><p>curl -fsSL {{ site_origin }}/start-coding/setup.sh | bash</p><div class="guide-prompt-actions"><span class="guide-cmd-label">Mac / Linux</span><button type="button" class="guide-copy" aria-label="Copy command"><i class="fas fa-copy"></i></button></div></div>
+        <div class="guide-prompt guide-cmd"><p>opencode</p><div class="guide-prompt-actions"><span class="guide-cmd-label">Start</span><button type="button" class="guide-copy" aria-label="Copy command"><i class="fas fa-copy"></i></button></div></div>
+      </div>
+      <p class="guide-text">Things to type inside OpenCode once it is running:</p>
+      <div class="guide-prompts">
+        <div class="guide-prompt guide-cmd"><p>Explain what this project does and how its folders are organised.</p><div class="guide-prompt-actions"><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
+        <div class="guide-prompt guide-cmd"><p>Add input validation to the signup form and write tests for it.</p><div class="guide-prompt-actions"><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
+        <div class="guide-prompt guide-cmd"><p>The login page shows a blank screen. Find out why and fix it.</p><div class="guide-prompt-actions"><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
+      </div>
+      <ul class="guide-tips">
+        <li><b>Only approve a code you just made yourself.</b> Never approve a code or link someone sent you — it would give them Code-X on your account.</li>
+        <li><b>Every computer gets its own sign-in.</b> They are listed under Code-X → <b>Connected computers</b>; press <b>Remove</b> to disconnect one.</li>
+        <li><b>Mention files</b> with <b>@filename</b>. If a session gets too long, type <b>/compact</b> or start a new one.</li>
+        <li><b>Your code is sent to {{ SITE_AI_BRAND_NAME }}</b> to produce answers. Don’t open folders that hold passwords or private keys.</li>
+        <li><b>“Invalid API key”?</b> The computer was removed — run the setup command again.</li>
+      </ul>
+      <button type="button" class="guide-try guide-open" data-guide-open="coding"><i class="fas fa-terminal"></i> Open Code-X</button>
+    </article>
+    {% endwith %}
+
     <article class="guide-section" id="guide-images">
       <h3><span class="guide-icon violet"><i class="fas fa-wand-magic-sparkles"></i></span> Images and posters</h3>
       <ol class="guide-steps">
@@ -2388,7 +2758,26 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
         <div class="guide-prompt"><p>Instagram poster for my bakery Sweet Crumbs – Fresh Cakes Daily, cakes from ₹299. Call 9876543210, visit sweetcrumbs.in. Warm pastel background. 1080×1350.</p><div class="guide-prompt-actions"><button type="button" class="guide-try">Try it</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
         <div class="guide-prompt"><p>Phone wallpaper of a calm mountain lake at sunrise, soft pastel colours.</p><div class="guide-prompt-actions"><button type="button" class="guide-try">Try it</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
       </div>
+      <ul class="guide-tips">
+        <li><b>More images</b> in the sidebar opens ready-made styles — tap one to start from it.</li>
+        <li>Every picture you make is kept in <b>My Images</b> (profile menu), even after you delete the chat.</li>
+      </ul>
+      <button type="button" class="guide-try guide-open" data-guide-images><i class="fas fa-image"></i> All image commands</button>
     </article>
+
+    {% if ai_video_ready %}
+    <article class="guide-section" id="guide-video">
+      <h3><span class="guide-icon violet"><i class="fas fa-film"></i></span> Short videos</h3>
+      <ol class="guide-steps">
+        <li>Start with <b>Make a video of…</b> and describe the scene, the movement and the mood.</li>
+        <li>You see <b>Making the video…</b> — it takes a minute or two. Keep the chat open.</li>
+        <li>When it is ready, play it in the chat or press <b>Download</b>.</li>
+      </ol>
+      <div class="guide-prompts">
+        <div class="guide-prompt"><p>Make a video of waves rolling onto a quiet beach at sunset, slow camera moving forward.</p><div class="guide-prompt-actions"><button type="button" class="guide-try">Try it</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
+      </div>
+    </article>
+    {% endif %}
 
     <article class="guide-section" id="guide-files">
       <h3><span class="guide-icon blue"><i class="fas fa-file-lines"></i></span> PDF, Word, Excel and slides</h3>
@@ -2443,6 +2832,18 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
       </div>
     </article>
 
+    <article class="guide-section" id="guide-convert">
+      <h3><span class="guide-icon blue"><i class="fas fa-right-left"></i></span> Convert a file</h3>
+      <ol class="guide-steps">
+        <li>Press the <b>⇄ convert</b> button at the bottom of the sidebar.</li>
+        <li><b>Choose a file</b>: PDF, Word, text, Markdown, CSV, Excel or a picture (PNG, JPG, WebP, BMP).</li>
+        <li>Pick the format you want — for example PDF to Word, Excel to CSV, or JPG to PNG — and the new file downloads.</li>
+      </ol>
+      <ul class="guide-tips">
+        <li>Converting runs on our own server. The file is not sent to the AI and is not kept.</li>
+      </ul>
+    </article>
+
     <article class="guide-section" id="guide-reply">
       <h3><span class="guide-icon"><i class="fas fa-reply"></i></span> Reply to one answer</h3>
       <ol class="guide-steps">
@@ -2452,14 +2853,47 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
       </ol>
     </article>
 
+    <article class="guide-section" id="guide-language">
+      <h3><span class="guide-icon"><i class="fas fa-language"></i></span> Answers in your language</h3>
+      <ol class="guide-steps">
+        <li>Press <b>Reply in</b> at the bottom of the sidebar.</li>
+        <li>Search or pick one of 32 languages — Hindi, Bengali, Tamil, Telugu, Marathi, Gujarati and many more.</li>
+        <li>Every answer now comes in that language, and the microphone, <b>Listen</b> and voice calls use it too. Pick <b>English</b> to switch back.</li>
+      </ol>
+    </article>
+
     <article class="guide-section" id="guide-voice">
-      <h3><span class="guide-icon"><i class="fas fa-microphone"></i></span> Voice</h3>
+      <h3><span class="guide-icon"><i class="fas fa-microphone"></i></span> Voice and calls</h3>
       <ol class="guide-steps">
         <li>Press the <b>microphone</b> and speak — your words are typed into the box.</li>
         <li>Press the <b>phone</b> to start a voice call and talk with the AI; you can interrupt it while it speaks.</li>
         <li>Press <b>Listen</b> under any answer to hear it read aloud.</li>
+        <li>After a call, open <b>My calls</b> in the profile menu to read the transcript, play the recording, download it as text or PDF, or delete it.</li>
       </ol>
     </article>
+
+    {% with site_origin=request.scheme|add:"://"|add:request.get_host %}
+    <article class="guide-section" id="guide-api">
+      <h3><span class="guide-icon amber"><i class="fas fa-key"></i></span> Developer API: use the AI from your own app</h3>
+      <ol class="guide-steps">
+        <li>Open your profile menu and choose <b>Get API</b>.</li>
+        <li>Press <b>Request API access</b>. You get the same models you can already use in the chat.</li>
+        <li>Press <b>Generate API key</b> and copy it straight away — it is shown only once. Keep it secret like a password.</li>
+        <li>Send a POST request with the key, as below. Replace <b>quick</b> with one of the model names listed in Get API.</li>
+      </ol>
+      <div class="guide-prompts">
+        <div class="guide-prompt guide-cmd"><p>curl -X POST {{ site_origin }}/api/v1/chat/ -H "Authorization: Bearer YOUR_API_KEY" -H "Content-Type: application/json" -d "{\"model\": \"quick\", \"message\": \"Hello!\"}"</p><div class="guide-prompt-actions"><button type="button" class="guide-copy" aria-label="Copy command"><i class="fas fa-copy"></i></button></div></div>
+      </div>
+      <ul class="guide-tips">
+        <li>The answer comes back as JSON with a <b>reply</b> field.</li>
+        <li>You can also send a picture to ask about it, choose the reply language, and make or change pictures. The <b>How to use</b> tab in Get API has copy-ready examples in curl, PowerShell, Python and JavaScript.</li>
+        <li>The <b>Overview</b> tab shows your requests today, the last 7 days, each model’s share and your recent requests. The <b>Models</b> tab lists each model’s key: change <b>"model"</b> to switch.</li>
+        <li>On the free plan, API messages come out of your free messages. Each key also has a per-minute and a daily limit.</li>
+        <li>Lost the key, or think someone else has it? Press <b>Regenerate API key</b> — the old one stops working at once.</li>
+      </ul>
+      <button type="button" class="guide-try guide-open" data-guide-open="api"><i class="fas fa-key"></i> Open Get API</button>
+    </article>
+    {% endwith %}
 
     <article class="guide-section" id="guide-github">
       <h3><span class="guide-icon"><i class="fab fa-github"></i></span> GitHub</h3>
@@ -2483,6 +2917,35 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
         <div class="guide-prompt"><p>Take this note: pay the electricity bill before the 15th.</p><div class="guide-prompt-actions"><button type="button" class="guide-try">Try it</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
         <div class="guide-prompt"><p>Show my notes</p><div class="guide-prompt-actions"><button type="button" class="guide-try">Try it</button><button type="button" class="guide-copy" aria-label="Copy prompt"><i class="fas fa-copy"></i></button></div></div>
       </div>
+    </article>
+
+    <article class="guide-section" id="guide-account">
+      <h3><span class="guide-icon"><i class="fas fa-user-gear"></i></span> Your account</h3>
+      <p class="guide-text">Everything here is in the profile menu at the top right.</p>
+      <ul class="guide-tips">
+        <li><b>Edit profile</b> — change your name, email, phone, photo or password.</li>
+        <li><b>Subscription</b> — your plan, when it ends, and how many free messages are left.</li>
+        <li><b>Connected devices</b> — every device logged in to your account. Log out any you don’t recognise. To add another device, press <b>Request device link</b> and open the link on that device within 10 minutes.</li>
+        <li><b>My Images</b> — every picture you have made. Download them all as one zip, or delete them.</li>
+        <li><b>My calls</b> — transcripts and recordings of your voice calls.</li>
+        <li><b>My reports</b> — answers you reported and what we did about them.</li>
+        <li><b>Export all chats</b> — download every chat as one PDF or text file. To save just one chat, press the <b>download</b> icon next to it in the sidebar.</li>
+        <li><b>Find things fast</b> — search all chats from the box at the top of the sidebar, or press <b>Ctrl + Shift + F</b> to find words in the open chat.</li>
+        {% if ai_pwa_ready %}<li><b>Install app</b> — put {{ SITE_AI_BRAND_NAME }} AI on your phone or computer like a normal app.</li>{% endif %}
+        <li><b>Video tutorials</b> — short how-to videos you can watch right here.</li>
+        <li><b>Support</b> — message us on WhatsApp or by email.</li>
+      </ul>
+    </article>
+
+    <article class="guide-section" id="guide-look">
+      <h3><span class="guide-icon violet"><i class="fas fa-palette"></i></span> Look and feel</h3>
+      <ul class="guide-tips">
+        <li><b>Themes</b> (profile menu) — change the whole look in one tap: Aurora, Paper, Sakura, Terminal, Ocean, or Classic for the usual look.</li>
+        <li><b>Customize</b> (profile menu) — pick your colours and font, and set a chat background or upload your own picture.</li>
+        <li>The <b>moon</b> button at the bottom of the sidebar switches dark mode on and off.</li>
+        <li>These choices are saved on each device, so your phone and computer can look different.</li>
+      </ul>
+      <button type="button" class="guide-try guide-open" data-guide-open="themes"><i class="fas fa-wand-magic-sparkles"></i> Open Themes</button>
     </article>
 
     <article class="guide-section" id="guide-tips">
@@ -3079,15 +3542,17 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
         </div>
         {% endif %}
         <button type="button" id="researchBtn" class="research-btn" aria-label="Turn on deep research" aria-pressed="false" title="Deep research — plan, search the web and write a report you can download"><i class="fas fa-magnifying-glass-chart"></i><span class="research-btn-label">Deep research</span></button>
-        <button type="button" id="webSearchBtn" class="search-btn" aria-label="Enable web search" aria-pressed="false" title="Search the web for this message"><i class="fas fa-globe"></i></button>
-        <button type="button" id="attachBtn" class="mic-btn" aria-label="Attach a file" title="Attach files — up to 4 images and 10 documents, spreadsheets, presentations or HTML files together (up to 50 MB each), or an audio clip"><i class="fas fa-paperclip"></i></button>
+        <span class="composer-sep" aria-hidden="true"></span>
+        <button type="button" id="webSearchBtn" class="search-btn" aria-label="Enable web search" aria-pressed="false" title="Search the web for this message"><i class="fas fa-globe"></i><span class="tool-label">Search</span></button>
+        <button type="button" id="attachBtn" class="mic-btn" aria-label="Attach a file" title="Attach files — up to 4 images and 10 documents, spreadsheets, presentations or HTML files together (up to 50 MB each), or an audio clip"><i class="fas fa-paperclip"></i><span class="tool-label">Attach</span></button>
         <input type="file" id="imageInput" multiple accept="image/*,audio/*,.pdf,.docx,.csv,.txt,.xlsx,.xlsm,.pptx,.html,.htm,.css,.js,.mjs,.cjs,.ts,.tsx,.jsx,.py,.java,.c,.cpp,.h,.hpp,.cs,.php,.rb,.go,.rs,.swift,.kt,.kts,.sql,.json,.xml,.yaml,.yml,.md,.vue,.svelte,.sh,.ps1,.toml,.ini,.log,.tsv,.jsonl,.mp3,.wav,.m4a,.webm,.ogg" hidden>
-        <button type="button" id="cameraBtn" class="mic-btn" aria-label="Take a photo" title="Take a photo"><i class="fas fa-camera"></i></button>
+        <button type="button" id="cameraBtn" class="mic-btn" aria-label="Take a photo" title="Take a photo"><i class="fas fa-camera"></i><span class="tool-label">Photo</span></button>
         <input type="file" id="cameraInput" accept="image/*" capture="environment" hidden>
-        <button type="button" id="micBtn" class="mic-btn" aria-label="Voice typing" title="Speak your message"><i class="fas fa-microphone"></i></button>
-        <button type="button" id="callBtn" class="mic-btn" aria-label="Start a voice call" title="Talk with AI on a voice call"><i class="fas fa-phone"></i></button>
+        <button type="button" id="micBtn" class="mic-btn" aria-label="Voice typing" title="Speak your message"><i class="fas fa-microphone"></i><span class="tool-label">Voice</span></button>
+        <button type="button" id="callBtn" class="mic-btn" aria-label="Start a voice call" title="Talk with AI on a voice call"><i class="fas fa-phone"></i><span class="tool-label">Call</span></button>
         <textarea id="chatInput" rows="1" placeholder="Message AI" aria-label="Message AI" maxlength="16000"></textarea>
-        <button type="button" id="sendBtn" aria-label="Send"><i class="fas fa-arrow-up"></i></button>
+        <span class="send-hint" aria-hidden="true"><kbd>Enter</kbd> to send · <kbd>Shift</kbd>+<kbd>Enter</kbd> new line</span>
+        <button type="button" id="sendBtn" aria-label="Send"><span class="send-label">Send</span><i class="fas fa-arrow-up"></i></button>
       </div>
       <p class="attach-error" id="attachError" hidden></p>
       {% if ai_is_staff or ai_subscribed %}
@@ -3369,6 +3834,48 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
   var githubRepoSelect = document.getElementById('githubRepoSelect');
   var githubModeToggle = document.getElementById('githubModeToggle');
   var githubDisconnectBtn = document.getElementById('githubDisconnectBtn');
+
+  // Fill the composer toolbar's spare room: labels on the input tools (left
+  // to right, so any left without one sit together at the end), then a
+  // "Send" pill, then a keyboard hint — each kept only while the whole
+  // toolbar still fits on one line, at any screen width.
+  (function fitComposer(){
+    if (!inputWrap || !sendBtn || !window.requestAnimationFrame) return;
+    var tools = [webSearchBtn, attachBtn, cameraBtn, micBtn, callBtn].filter(Boolean);
+    var steps = tools.map(function(btn){
+      return { on: function(){ btn.classList.add('tool-labeled'); }, off: function(){ btn.classList.remove('tool-labeled'); } };
+    });
+    steps.push({ on: function(){ inputWrap.classList.add('send-pill'); }, off: function(){ inputWrap.classList.remove('send-pill'); } });
+    steps.push({ on: function(){ inputWrap.classList.add('with-hint'); }, off: function(){ inputWrap.classList.remove('with-hint'); } });
+    var first = inputWrap.querySelector('.model-picker-wrap') || tools[0];
+    function middle(el){ var box = el.getBoundingClientRect(); return box.top + box.height / 2; }
+    function oneRow(){ return Math.abs(middle(sendBtn) - middle(first)) < 6; }
+    var pending = false;
+    function fit(){
+      pending = false;
+      steps.forEach(function(step){ step.off(); });
+      // On phones the icon row is already full; labels never fit there.
+      if (inputWrap.clientWidth < 520) return;
+      for (var i = 0; i < steps.length; i++) {
+        steps[i].on();
+        if (!oneRow()) { steps[i].off(); break; }
+      }
+    }
+    function schedule(){
+      if (pending) return;
+      pending = true;
+      requestAnimationFrame(fit);
+    }
+    if (window.ResizeObserver) {
+      var observer = new ResizeObserver(schedule);
+      observer.observe(inputWrap);
+      if (modelPickerBtn) observer.observe(modelPickerBtn);
+    } else {
+      window.addEventListener('resize', schedule);
+    }
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(schedule);
+    schedule();
+  })();
   var attachPreview = document.getElementById('attachPreview');
   var attachThumb = document.getElementById('attachThumb');
   var attachDocIcon = document.getElementById('attachDocIcon');
@@ -4776,6 +5283,8 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
     sendBtn.setAttribute('aria-label', on ? 'Stop generating' : 'Send');
     var sendIcon = sendBtn.querySelector('i');
     if (sendIcon) sendIcon.className = on ? 'fas fa-stop' : 'fas fa-arrow-up';
+    var sendLabel = sendBtn.querySelector('.send-label');
+    if (sendLabel) sendLabel.textContent = on ? 'Stop' : 'Send';
     input.disabled = on || locked;
     if (micBtn) micBtn.disabled = on || locked;
     if (callBtn) callBtn.disabled = on || locked;
@@ -8385,12 +8894,153 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
       });
   }
 
+  var apiTab = 'overview';
+  var apiCodeLang = /win/i.test(navigator.platform || '') ? 'powershell' : 'curl';
+
+  function apiNum(n){ return Number(n || 0).toLocaleString(); }
+
+  function apiWhen(iso){
+    if (!iso) return 'never';
+    var date = new Date(iso);
+    var seconds = Math.round((Date.now() - date.getTime()) / 1000);
+    if (seconds < 60) return 'just now';
+    if (seconds < 3600) return Math.floor(seconds / 60) + ' min ago';
+    if (seconds < 86400) return Math.floor(seconds / 3600) + ' h ago';
+    return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) + ', ' +
+      date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  }
+
+  // Code samples, one per language, with this site's address and a model the key can use.
+  function apiSamples(origin, model){
+    var chat = origin + '/api/v1/chat/';
+    var images = origin + '/api/v1/images/';
+    return {
+      chat: {
+        curl: 'curl -X POST ' + chat + ' \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n' +
+          '  -d \'{"model": "' + model + '", "message": "Hello! What can you do?"}\'',
+        powershell: '$headers = @{ Authorization = "Bearer YOUR_API_KEY" }\n' +
+          '$body = @{ model = "' + model + '"; message = "Hello! What can you do?" } | ConvertTo-Json\n' +
+          '$answer = Invoke-RestMethod -Method Post -Uri "' + chat + '" -Headers $headers -ContentType "application/json" -Body $body\n' +
+          '$answer.reply',
+        python: 'import requests\n\nAPI_KEY = "YOUR_API_KEY"\n\nresponse = requests.post(\n    "' + chat + '",\n' +
+          '    headers={"Authorization": f"Bearer {API_KEY}"},\n' +
+          '    json={"model": "' + model + '", "message": "Hello! What can you do?"},\n    timeout=120,\n)\n' +
+          'data = response.json()\nif not response.ok:\n    raise SystemExit(data["error"])\nprint(data["reply"])',
+        javascript: 'const response = await fetch("' + chat + '", {\n  method: "POST",\n' +
+          '  headers: { "Authorization": "Bearer YOUR_API_KEY", "Content-Type": "application/json" },\n' +
+          '  body: JSON.stringify({ model: "' + model + '", message: "Hello! What can you do?" }),\n});\n' +
+          'const data = await response.json();\nif (!response.ok) throw new Error(data.error);\nconsole.log(data.reply);'
+      },
+      conversation: 'import requests\n\nAPI_KEY = "YOUR_API_KEY"\nhistory = []\n\n' +
+        'def ask(text):\n    history.append({"role": "user", "content": text})\n' +
+        '    response = requests.post(\n        "' + chat + '",\n        headers={"Authorization": f"Bearer {API_KEY}"},\n' +
+        '        json={"model": "' + model + '", "messages": history[-30:]},\n        timeout=120,\n    )\n' +
+        '    reply = response.json()["reply"]\n    history.append({"role": "assistant", "content": reply})\n    return reply\n\n' +
+        'print(ask("Suggest a name for my bakery."))\nprint(ask("Make it shorter."))  # remembers the bakery',
+      vision: 'import base64, requests\n\nAPI_KEY = "YOUR_API_KEY"\n\nwith open("photo.jpg", "rb") as f:\n' +
+        '    image = "data:image/jpeg;base64," + base64.b64encode(f.read()).decode()\n\n' +
+        'response = requests.post(\n    "' + chat + '",\n    headers={"Authorization": f"Bearer {API_KEY}"},\n' +
+        '    json={"model": "' + model + '", "message": "What is written in this picture?", "image": image},\n    timeout=120,\n)\n' +
+        'print(response.json()["reply"])',
+      images: 'import requests\n\nAPI_KEY = "YOUR_API_KEY"\n\nresponse = requests.post(\n    "' + images + '",\n' +
+        '    headers={"Authorization": f"Bearer {API_KEY}"},\n' +
+        '    json={"prompt": "A cozy reading corner by a rainy window, watercolour style"},\n    timeout=180,\n)\n' +
+        'data = response.json()\nprint(data["image_url"])\n\n# Save it\nwith open("picture.webp", "wb") as f:\n' +
+        '    f.write(requests.get(data["image_url"], timeout=60).content)',
+      imagesCurl: 'curl -X POST ' + images + ' \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n' +
+        '  -d \'{"prompt": "Instagram poster for Sweet Crumbs bakery, cakes from Rs 299, pastel colours"}\'',
+      edit: 'json={"prompt": "Make the background a beach at sunset", "image": image}  # image: a data URI, as above',
+      switching: 'for model in ["MODEL_A", "MODEL_B"]:\n    response = requests.post(\n        "' + chat + '",\n' +
+        '        headers={"Authorization": f"Bearer {API_KEY}"},\n        json={"model": model, "message": "Explain gravity in one line."},\n' +
+        '        timeout=120,\n    )\n    print(model, "->", response.json()["reply"])',
+      language: '{"model": "' + model + '", "message": "Explain photosynthesis simply.", "language": "hi"}'
+    };
+  }
+
+  function apiUsageHtml(apiAccess){
+    var usage = apiAccess.usage || {};
+    var limits = apiAccess.limits || {};
+    var plan = apiAccess.plan || {};
+    var days = usage.last_7_days || [];
+    var todayShare = limits.per_day ? Math.min(100, (usage.today || 0) / limits.per_day * 100) : 0;
+
+    var tiles = '<div class="api-stats">' +
+      '<div class="api-stat"><span class="api-stat-label">Requests today</span><span class="api-stat-value">' + apiNum(usage.today) + '</span>' +
+        '<span class="api-stat-sub">of ' + apiNum(limits.per_day) + ' a day</span>' +
+        '<span class="api-meter" aria-hidden="true"><span style="width:' + todayShare.toFixed(1) + '%"></span></span></div>' +
+      '<div class="api-stat"><span class="api-stat-label">Last ' + escHtml(String(usage.keep_days || 90)) + ' days</span><span class="api-stat-value">' + apiNum(usage.total) + '</span>' +
+        '<span class="api-stat-sub">' + (usage.failed_7_days ? apiNum(usage.failed_7_days) + ' failed this week' : 'requests in total') + '</span></div>' +
+      '<div class="api-stat"><span class="api-stat-label">Pictures today</span><span class="api-stat-value">' + apiNum(usage.images_today) + '</span>' +
+        '<span class="api-stat-sub">of ' + apiNum(limits.images_per_day) + ', chat and API together</span></div>' +
+      (plan.unlimited
+        ? '<div class="api-stat"><span class="api-stat-label">Plan</span><span class="api-stat-value api-stat-word">Unlimited</span><span class="api-stat-sub">messages are not counted</span></div>'
+        : '<div class="api-stat"><span class="api-stat-label">Free messages left</span><span class="api-stat-value">' + apiNum(plan.free_remaining) + '</span>' +
+          '<span class="api-stat-sub">of ' + apiNum(plan.free_limit) + ', chat and API together</span></div>') +
+      '</div>';
+
+    var peak = days.reduce(function(max, d){ return Math.max(max, d.count); }, 0);
+    var peakIndex = -1;
+    days.forEach(function(d, i){ if (peak && d.count === peak && peakIndex < 0) peakIndex = i; });
+    var bars = days.map(function(d, i){
+      var isToday = i === days.length - 1;
+      var date = new Date(d.date + 'T00:00:00');
+      var name = isToday ? 'Today' : date.toLocaleDateString(undefined, { weekday: 'short' });
+      var full = date.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' });
+      var height = peak ? Math.max(d.count ? 4 : 0, Math.round(d.count / peak * 100)) : 0;
+      var label = (isToday || i === peakIndex) && d.count ? '<span class="api-col-value">' + apiNum(d.count) + '</span>' : '';
+      var tip = full + ': ' + apiNum(d.count) + ' request' + (d.count === 1 ? '' : 's');
+      return '<div class="api-col' + (isToday ? ' today' : '') + '" tabindex="0" aria-label="' + escHtml(tip) + '" data-tip="' + escHtml(tip) + '">' +
+        '<div class="api-col-plot" style="--h:' + height + '%">' + label + '<span class="api-col-bar" style="height:' + height + '%"></span></div>' +
+        '<span class="api-col-day">' + escHtml(name) + '</span></div>';
+    }).join('');
+    var chart = '<div class="api-card"><div class="api-card-head"><h4>Requests, last 7 days</h4>' +
+      '<span>Last used ' + escHtml(apiWhen(usage.last_used_at)) + '</span></div>' +
+      (peak ? '<div class="api-cols" role="list">' + bars + '</div>'
+            : '<p class="api-empty-note"><i class="fas fa-chart-column"></i> No requests this week yet. Send your first one from <b>How to use</b>.</p>') +
+      '</div>';
+
+    var byModel = usage.by_model || [];
+    var modelMax = byModel.reduce(function(max, m){ return Math.max(max, m.count); }, 0);
+    var models = byModel.length ? '<div class="api-card"><div class="api-card-head"><h4>By model</h4><span>last ' + escHtml(String(usage.keep_days || 90)) + ' days</span></div>' +
+      '<div class="api-hbars">' + byModel.map(function(m){
+        return '<div class="api-hbar" title="' + escHtml(m.label + ': ' + apiNum(m.count)) + '"><span class="api-hbar-name">' + escHtml(m.label) + '</span>' +
+          '<span class="api-hbar-track"><span style="width:' + Math.max(2, Math.round(m.count / modelMax * 100)) + '%"></span></span>' +
+          '<span class="api-hbar-value">' + apiNum(m.count) + '</span></div>';
+      }).join('') + '</div></div>' : '';
+
+    var recentRows = usage.recent || [];
+    var recent = recentRows.length ? '<div class="api-card"><div class="api-card-head"><h4>Recent requests</h4><span>newest first</span></div>' +
+      '<div class="api-table-wrap"><table class="api-table"><thead><tr><th>When</th><th>What</th><th>Result</th><th>Time</th></tr></thead><tbody>' +
+      recentRows.map(function(r){
+        var what = (r.kind === 'image' ? (r.with_image ? 'Picture edit' : 'Picture') : 'Chat · ' + r.model) + (r.kind === 'chat' && r.with_image ? ' + image' : '');
+        var result = r.ok ? '<span class="api-status ok"><i class="fas fa-circle-check"></i> OK</span>'
+                          : '<span class="api-status fail"><i class="fas fa-circle-xmark"></i> Failed</span>';
+        return '<tr><td>' + escHtml(apiWhen(r.at)) + '</td><td>' + escHtml(what) + '</td><td>' + result + '</td><td>' +
+          escHtml((r.duration_ms / 1000).toFixed(1)) + ' s</td></tr>';
+      }).join('') + '</tbody></table></div></div>' : '';
+
+    return tiles + chart + models + recent +
+      '<p class="account-help">Up to <b>' + apiNum(limits.per_minute) + '</b> requests a minute and <b>' + apiNum(limits.per_day) +
+      '</b> a day per key. Numbers update each time you open this page. <button type="button" class="api-link-btn" data-api-refresh>Refresh now</button></p>';
+  }
+
   function renderAccountApi(apiAccess, revealedKey){
     var panel = accountModal && accountModal.querySelector('[data-account-content="api"]');
     if (!panel || !apiAccess) return;
+    var origin = window.location.origin;
+    var hero = '<div class="cc-hero"><p class="cc-hero-title"><i class="fas fa-plug"></i> Use ' + escHtml(AI_BRAND_NAME) +
+      ' AI from your own app</p><p class="account-help">Send a question from your website, app, script or spreadsheet and get the answer back as JSON — ' +
+      'chat, read pictures, and make pictures, with the same models you use here.</p></div>';
+
     if (!apiAccess.granted) {
-      panel.innerHTML = '<div class="account-empty"><i class="fas fa-lock"></i><br><br>' +
-        "You don't have developer API access yet.<br>Request it below — it's granted automatically.</div>" +
+      panel.innerHTML = hero +
+        '<div class="api-card"><h4 class="api-card-title">What you get</h4><ul class="api-list">' +
+        '<li><i class="fas fa-comments"></i> Chat with your models from any programming language</li>' +
+        '<li><i class="fas fa-image"></i> Send a picture and ask about it</li>' +
+        '<li><i class="fas fa-wand-magic-sparkles"></i> Make or change pictures</li>' +
+        '<li><i class="fas fa-chart-column"></i> See your usage here, request by request</li></ul>' +
+        '<p class="account-help">Access is given straight away, for the same models you can already use in the chat.' +
+        (apiAccess.plan && !apiAccess.plan.unlimited ? ' On the free plan, API messages come out of your free messages.' : '') + '</p></div>' +
         '<div class="account-form-actions"><span class="account-message" id="apiAccessRequestMessage" aria-live="polite"></span>' +
         '<button type="button" class="account-save-btn" id="apiAccessRequestBtn">Request API access</button></div>';
       var requestBtn = document.getElementById('apiAccessRequestBtn');
@@ -8405,9 +9055,8 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
             return response.json().then(function(body){ return { ok: response.ok, body: body }; });
           }).then(function(result){
             if (!result.ok) throw new Error(result.body.detail || 'Could not grant API access.');
-            apiAccess.granted = true;
-            apiAccess.models = result.body.models;
-            renderAccountApi(apiAccess);
+            apiTab = 'overview';
+            return loadAccountData();
           }).catch(function(error){
             if (message) { message.textContent = error.message; }
             requestBtn.disabled = false;
@@ -8416,40 +9065,157 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
       }
       return;
     }
-    var modelList = apiAccess.models.map(function(m){ return '<span class="api-model-chip">' + escHtml(m.label) + '</span>'; }).join('');
-    var keyBox = '';
+
+    var models = apiAccess.models || [];
+    var sampleModel = models.length ? models[0].key : 'MODEL_KEY';
+    var samples = apiSamples(origin, sampleModel);
+
+    // ---- key card ----
+    var keyBody;
     if (revealedKey) {
-      keyBox = '<div class="api-key-reveal">' +
+      keyBody = '<div class="api-key-reveal">' +
         '<p class="api-key-reveal-label"><i class="fas fa-triangle-exclamation"></i> Copy this key now — it will not be shown again.</p>' +
         '<div class="api-key-value" id="apiKeyRevealValue">' + escHtml(revealedKey) + '</div>' +
         '<button type="button" class="account-save-btn" id="apiKeyCopyBtn">Copy key</button>' +
       '</div>';
     } else if (apiAccess.has_key) {
       var created = apiAccess.key_created_at ? new Date(apiAccess.key_created_at).toLocaleString() : '';
-      keyBox = '<p class="account-help">Active key: <code>' + escHtml(apiAccess.key_prefix) + '…</code>' + (created ? ' &middot; generated ' + escHtml(created) : '') + '</p>';
+      keyBody = '<p class="api-key-line"><span class="api-dot on"></span> Active key <code>' + escHtml(apiAccess.key_prefix) + '…</code>' +
+        (created ? '<small>made ' + escHtml(created) + '</small>' : '') + '</p>' +
+        '<p class="account-help">Only the start of the key is shown. Lost it? Regenerate — the old key stops working at once, so update any code that uses it.</p>';
+    } else {
+      keyBody = '<p class="api-key-line"><span class="api-dot"></span> No key yet</p>' +
+        '<p class="account-help">Generate a key to start. It is shown only once — keep it secret like a password.</p>';
     }
-    var buttonLabel = apiAccess.has_key ? 'Regenerate API key' : 'Generate API key';
-    var warning = apiAccess.has_key
-      ? '<p class="account-help">Regenerating immediately invalidates your current key — update any code using it.</p>' : '';
-    panel.innerHTML =
-      '<h3 class="account-section-title">Your allowed models</h3>' +
-      '<div class="api-model-chip-list">' + modelList + '</div>' +
-      '<hr class="account-divider">' +
-      '<h3 class="account-section-title">API key</h3>' +
-      keyBox + warning +
+    var keyCard = '<div class="api-card"><div class="api-card-head"><h4>API key</h4></div>' + keyBody +
       '<div class="account-form-actions"><span class="account-message" id="apiKeyMessage" aria-live="polite"></span>' +
-      '<button type="button" class="account-save-btn" id="apiKeyGenerateBtn">' + buttonLabel + '</button></div>' +
-      '<hr class="account-divider">' +
-      '<h3 class="account-section-title">How to use it</h3>' +
-      '<p class="account-help">Send a POST request with your key as a bearer token. Replace <code>&lt;model&gt;</code> with one of the model keys shown above.</p>' +
-      '<pre class="api-instructions-code">curl -X POST https://' + escHtml(window.location.host) + '/api/v1/chat/ \\\n' +
-      '  -H "Authorization: Bearer YOUR_API_KEY" \\\n' +
-      '  -H "Content-Type: application/json" \\\n' +
-      '  -d \'{"model": "&lt;model&gt;", "message": "Hello!"}\'</pre>' +
-      '<p class="account-help">Or send a full conversation instead of a single message:</p>' +
-      '<pre class="api-instructions-code">{\n  "model": "&lt;model&gt;",\n  "messages": [\n    {"role": "user", "content": "Hello!"},\n    {"role": "assistant", "content": "Hi! How can I help?"},\n    {"role": "user", "content": "Tell me a joke."}\n  ]\n}</pre>' +
-      '<p class="account-help">The response is JSON: <code>{"model": "...", "reply": "...", "created_at": "..."}</code>. ' +
-      'Only models listed above are authorized for your key; any other model returns a 403. Keep your key secret — anyone with it can use your granted models.</p>';
+      '<button type="button" class="account-save-btn" id="apiKeyGenerateBtn">' + (apiAccess.has_key ? 'Regenerate API key' : 'Generate API key') + '</button></div></div>';
+
+    // ---- models tab ----
+    var modelCards = models.map(function(m){
+      return '<div class="api-model">' +
+        '<div class="api-model-main"><b>' + escHtml(m.label) + '</b>' + (m.description ? '<small>' + escHtml(m.description) + '</small>' : '') + '</div>' +
+        '<button type="button" class="api-model-key" data-copy="' + encodeURIComponent(m.key) + '" title="Copy the model key">' +
+        '<code>' + escHtml(m.key) + '</code><i class="fas fa-copy"></i></button></div>';
+    }).join('');
+    if (apiAccess.images_enabled) {
+      modelCards += '<div class="api-model">' +
+        '<div class="api-model-main"><b>Pictures</b><small>Makes a new picture, or changes one you send. Use the /api/v1/images/ address — no model key needed.</small></div>' +
+        '<span class="api-model-key static"><code>/api/v1/images/</code></span></div>';
+    }
+    var languages = (apiAccess.languages || []).map(function(l){
+      return '<span class="api-lang"><code>' + escHtml(l.code) + '</code> ' + escHtml(l.name) + '</span>';
+    }).join('');
+    var modelsPane =
+      '<p class="account-help api-lead">Every request names the model that answers it. Put the model’s <b>key</b> (the grey code — click to copy) in the <code>"model"</code> field.</p>' +
+      '<div class="api-models">' + modelCards + '</div>' +
+      '<div class="api-card"><h4 class="api-card-title">Changing models</h4>' +
+      '<p class="account-help">There is nothing to switch on: change the <code>"model"</code> value and the next request uses that model. ' +
+      'Each request can use a different one — for example a quick model for short answers and a stronger one for long work. A model not listed above returns error <b>403</b>.</p>' +
+      ccBlock(samples.switching.replace('MODEL_A', sampleModel).replace('MODEL_B', models.length > 1 ? models[1].key : sampleModel)) + '</div>' +
+      '<div class="api-card"><h4 class="api-card-title">Reply language</h4>' +
+      '<p class="account-help">Add <code>"language"</code> with one of these codes and the answer comes in that language. Leave it out for English.</p>' +
+      ccBlock(samples.language) + '<div class="api-langs">' + languages + '</div></div>';
+
+    // ---- how to use tab ----
+    var langTabs = [['curl', 'curl (Mac / Linux)'], ['powershell', 'PowerShell (Windows)'], ['python', 'Python'], ['javascript', 'JavaScript']];
+    var codeTabs = '<div class="cc-os-tabs">' + langTabs.map(function(t){
+      return '<button type="button" class="cc-os-tab' + (t[0] === apiCodeLang ? ' active' : '') + '" data-api-lang="' + t[0] + '">' + escHtml(t[1]) + '</button>';
+    }).join('') + '</div>' + langTabs.map(function(t){
+      return '<div class="cc-os-pane" data-api-lang-pane="' + t[0] + '"' + (t[0] === apiCodeLang ? '' : ' hidden') + '>' + ccBlock(samples.chat[t[0]]) + '</div>';
+    }).join('');
+    var step = function(n, title, body){
+      return '<section class="cc-step"><div class="cc-step-head"><span class="cc-step-num">' + n + '</span><h3 class="cc-step-title">' + title + '</h3></div>' + body + '</section>';
+    };
+    var fieldRow = function(name, need, text){
+      return '<tr><td><code>' + name + '</code></td><td>' + need + '</td><td>' + text + '</td></tr>';
+    };
+    var guidePane = '<div class="cc-steps">' +
+      step(1, 'Get your key', '<p>On the <b>Overview</b> tab press <b>' + (apiAccess.has_key ? 'Regenerate' : 'Generate') + ' API key</b> and copy it. ' +
+        'Put it where your code can read it, like an environment variable — never in a web page or a public repository.</p>') +
+      step(2, 'Send your first message', '<p>Pick your language, copy the example and replace <code>YOUR_API_KEY</code>. ' +
+        'The model here is <code>' + escHtml(sampleModel) + '</code>; see the <b>Models</b> tab for the others.</p>' + codeTabs +
+        '<p>The answer comes back as JSON:</p>' + ccBlock('{\n  "model": "' + sampleModel + '",\n  "reply": "Hi! I can answer questions, write, explain...",\n  "created_at": "2026-10-29T15:04:05+05:30"\n}')) +
+      step(3, 'Keep a conversation going', '<p>The API does not remember earlier requests. To continue a chat, send the earlier turns in <code>"messages"</code> ' +
+        '(up to 30, oldest first, the last one from <code>"user"</code>).</p>' + ccBlock(samples.conversation)) +
+      step(4, 'Ask about a picture', '<p>Add <code>"image"</code>: the picture as a base64 <b>data URI</b> (PNG, JPEG, WebP or GIF, up to about 1.5 MB). ' +
+        'Any model can take it — text-only models get help reading it. Web addresses are not accepted; send the file itself.</p>' + ccBlock(samples.vision)) +
+      (apiAccess.images_enabled ? step(5, 'Make or change a picture', '<p>Send a <code>"prompt"</code> to <code>/api/v1/images/</code>. You get back <code>"image_url"</code>, ' +
+        'a private link to the picture; it also appears in <b>My Images</b>. Pictures can take up to a minute.</p>' + ccBlock(samples.images) +
+        '<p>From the command line:</p>' + ccBlock(samples.imagesCurl) +
+        '<p>To change a picture, send it as <code>"image"</code> with the prompt saying what to change:</p>' + ccBlock(samples.edit)) : '') +
+      '</div>' +
+      '<div class="api-card"><h4 class="api-card-title">Request fields</h4><div class="api-table-wrap"><table class="api-table api-fields"><thead><tr><th>Field</th><th>Needed</th><th>What it does</th></tr></thead><tbody>' +
+      '<tr class="api-table-group"><td colspan="3">POST /api/v1/chat/</td></tr>' +
+      fieldRow('model', 'Yes', 'The model key, from the Models tab.') +
+      fieldRow('message', 'One of these two', 'A single question as text.') +
+      fieldRow('messages', 'One of these two', 'A conversation: up to 30 <code>{"role": "user" | "assistant", "content": "..."}</code>, the last from "user". Up to 8,000 characters each.') +
+      fieldRow('image', 'No', 'A picture to ask about, as a data URI. Read with the last message.') +
+      fieldRow('language', 'No', 'Reply language code, such as <code>hi</code> or <code>ta</code>. Default <code>en</code>.') +
+      (apiAccess.images_enabled ? '<tr class="api-table-group"><td colspan="3">POST /api/v1/images/</td></tr>' +
+        fieldRow('prompt', 'Yes', 'What to draw, or what to change. Write any words the picture should show exactly.') +
+        fieldRow('image', 'No', 'A picture to change, as a data URI.') : '') +
+      '</tbody></table></div></div>' +
+      '<div class="api-card"><h4 class="api-card-title">When something goes wrong</h4>' +
+      '<p class="account-help">Errors come back as <code>{"error": "what went wrong", "code": "short_name"}</code> with one of these status numbers:</p>' +
+      '<div class="api-table-wrap"><table class="api-table"><tbody>' +
+      '<tr><td><b>400</b></td><td>Something is missing or wrong in the request — the message says what.</td></tr>' +
+      '<tr><td><b>401</b></td><td>The key is missing, mistyped or was regenerated. Send <code>Authorization: Bearer YOUR_API_KEY</code>.</td></tr>' +
+      '<tr><td><b>403</b></td><td>That model is not on your list, your free messages are used up, or access was restricted.</td></tr>' +
+      '<tr><td><b>429</b></td><td>Too many requests. Wait the number of seconds in the <code>Retry-After</code> header, then try again.</td></tr>' +
+      '<tr><td><b>502</b></td><td>The model could not answer this time. Wait a little and retry.</td></tr>' +
+      '<tr><td><b>503</b></td><td>That model or feature is switched off right now.</td></tr>' +
+      '</tbody></table></div></div>' +
+      '<div class="api-card"><h4 class="api-card-title">Good to know</h4><ul class="api-list">' +
+      '<li><i class="fas fa-lock"></i> Keep the key on your server. Anyone who has it can use your account’s models.</li>' +
+      '<li><i class="fas fa-gauge"></i> Limits: ' + apiNum(apiAccess.limits.per_minute) + ' requests a minute, ' + apiNum(apiAccess.limits.per_day) + ' a day, ' +
+        apiNum(apiAccess.limits.images_per_day) + ' pictures a day (chat page included).</li>' +
+      (apiAccess.plan && !apiAccess.plan.unlimited ? '<li><i class="fas fa-coins"></i> On the free plan each request uses one of your free messages.</li>' : '') +
+      '<li><i class="fas fa-clock"></i> Answers can take 5–60 seconds. Set your timeout to at least 2 minutes.</li>' +
+      '<li><i class="fas fa-headset"></i> Stuck? Use <b>Support</b> in the profile menu.</li></ul></div>';
+
+    var tabs = [['overview', 'Overview', 'fa-chart-simple'], ['models', 'Models', 'fa-layer-group'], ['guide', 'How to use', 'fa-book-open']];
+    panel.innerHTML = hero +
+      '<div class="api-tabs" role="tablist">' + tabs.map(function(t){
+        return '<button type="button" role="tab" class="api-tab' + (t[0] === apiTab ? ' active' : '') + '" data-api-tab="' + t[0] + '" aria-selected="' + (t[0] === apiTab) + '">' +
+          '<i class="fas ' + t[2] + '"></i> ' + t[1] + '</button>';
+      }).join('') + '</div>' +
+      '<div class="api-pane" data-api-pane="overview"' + (apiTab === 'overview' ? '' : ' hidden') + '>' + keyCard + apiUsageHtml(apiAccess) + '</div>' +
+      '<div class="api-pane" data-api-pane="models"' + (apiTab === 'models' ? '' : ' hidden') + '>' + modelsPane + '</div>' +
+      '<div class="api-pane" data-api-pane="guide"' + (apiTab === 'guide' ? '' : ' hidden') + '>' +
+      '<div class="api-base"><span>Address</span><code>' + escHtml(origin) + '/api/v1</code>' +
+      '<button type="button" class="code-copy-btn" data-copy="' + encodeURIComponent(origin + '/api/v1') + '"><i class="fas fa-copy"></i> Copy</button></div>' +
+      guidePane + '</div>';
+
+    panel.onclick = function(event){
+      var tab = event.target.closest('[data-api-tab]');
+      if (tab) {
+        apiTab = tab.getAttribute('data-api-tab');
+        panel.querySelectorAll('[data-api-tab]').forEach(function(b){
+          b.classList.toggle('active', b === tab);
+          b.setAttribute('aria-selected', b === tab ? 'true' : 'false');
+        });
+        panel.querySelectorAll('[data-api-pane]').forEach(function(p){ p.hidden = p.getAttribute('data-api-pane') !== apiTab; });
+        return;
+      }
+      var lang = event.target.closest('[data-api-lang]');
+      if (lang) {
+        apiCodeLang = lang.getAttribute('data-api-lang');
+        panel.querySelectorAll('[data-api-lang]').forEach(function(b){ b.classList.toggle('active', b === lang); });
+        panel.querySelectorAll('[data-api-lang-pane]').forEach(function(p){ p.hidden = p.getAttribute('data-api-lang-pane') !== apiCodeLang; });
+        return;
+      }
+      if (event.target.closest('[data-api-refresh]')) { loadAccountData(); return; }
+      var copyBtn = event.target.closest('.code-copy-btn, .api-model-key[data-copy]');
+      if (copyBtn) {
+        var original = copyBtn.innerHTML;
+        ccCopyText(decodeURIComponent(copyBtn.getAttribute('data-copy')), function(){
+          copyBtn.classList.add('copied');
+          if (copyBtn.classList.contains('code-copy-btn')) copyBtn.innerHTML = '<i class="fas fa-check"></i> Copied';
+          setTimeout(function(){ copyBtn.classList.remove('copied'); copyBtn.innerHTML = original; }, 1500);
+        });
+      }
+    };
 
     var generateBtn = document.getElementById('apiKeyGenerateBtn');
     if (generateBtn) {
@@ -8467,6 +9233,7 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
           apiAccess.has_key = true;
           apiAccess.key_prefix = result.body.api_key.slice(0, 11);
           apiAccess.key_created_at = new Date().toISOString();
+          apiTab = 'overview';
           renderAccountApi(apiAccess, result.body.api_key);
         }).catch(function(error){
           if (message) { message.textContent = error.message; }
@@ -8474,22 +9241,15 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
         });
       });
     }
-    var copyBtn = document.getElementById('apiKeyCopyBtn');
-    if (copyBtn) {
-      copyBtn.addEventListener('click', function(){
+    var keyCopyBtn = document.getElementById('apiKeyCopyBtn');
+    if (keyCopyBtn) {
+      keyCopyBtn.addEventListener('click', function(){
         var value = document.getElementById('apiKeyRevealValue');
         if (!value) return;
-        var text = value.textContent;
-        var done = function(){ copyBtn.textContent = 'Copied!'; setTimeout(function(){ copyBtn.textContent = 'Copy key'; }, 1500); };
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(text).then(done).catch(function(){});
-        } else {
-          var range = document.createRange();
-          range.selectNodeContents(value);
-          window.getSelection().removeAllRanges();
-          window.getSelection().addRange(range);
-          try { document.execCommand('copy'); done(); } catch (e) {}
-        }
+        ccCopyText(value.textContent, function(){
+          keyCopyBtn.textContent = 'Copied!';
+          setTimeout(function(){ keyCopyBtn.textContent = 'Copy key'; }, 1500);
+        });
       });
     }
   }
@@ -8901,39 +9661,203 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
     });
   }
 
-  // ---- "How to use" guide ----
-  var guideModal = document.getElementById('guideModal');
-  var guideBackdrop = document.getElementById('guideBackdrop');
-  var guideBody = document.getElementById('guideBody');
+  // ---- "Video tutorials" player ----
+  var tutorials = (function setupTutorials(){
+    var modal = document.getElementById('tutModal');
+    var backdrop = document.getElementById('tutBackdrop');
+    var menuBtn = document.getElementById('tutorialsMenuBtn');
+    if (!modal || !backdrop) return { open: function(){} };
+    var player = document.getElementById('tutPlayer');
+    var stage = document.getElementById('tutStage');
+    var overlay = document.getElementById('tutOverlay');
+    var overlayText = document.getElementById('tutOverlayText');
+    var titleEl = document.getElementById('tutTitle');
+    var countEl = document.getElementById('tutCount');
+    var descEl = document.getElementById('tutDesc');
+    var listEl = document.getElementById('tutList');
+    var prevBtn = document.getElementById('tutPrev');
+    var nextBtn = document.getElementById('tutNext');
+    var videos = [], current = -1, retryTimer = null, retries = 0;
+
+    function setOverlay(text){
+      overlay.hidden = !text;
+      if (text) overlayText.textContent = text;
+    }
+    function stop(){
+      clearTimeout(retryTimer);
+      player.pause();
+      player.removeAttribute('src');
+      player.load();
+    }
+    function fetchList(){
+      return fetch('/AI/api/tutorials/', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+        .then(function(response){
+          return response.json().then(function(body){
+            if (!response.ok) throw new Error(body.detail || 'Could not load the tutorials.');
+            return body.videos || [];
+          });
+        });
+    }
+    function renderList(){
+      countEl.textContent = videos.length > 1 ? '· ' + (current + 1) + ' of ' + videos.length : '';
+      listEl.innerHTML = videos.length > 1 ? videos.map(function(video, index){
+        var thumb = video.poster ? '<img src="' + escHtml(video.poster) + '" alt="">' : '<i class="fas fa-film"></i>';
+        return '<button type="button" class="tut-item' + (index === current ? ' active' : '') + '" role="listitem" data-tut-index="' + index + '">' +
+          '<span class="tut-thumb">' + thumb + (video.length ? '<small>' + escHtml(video.length) + '</small>' : '') + '</span>' +
+          '<b>' + escHtml(video.title) + '</b></button>';
+      }).join('') : '';
+      prevBtn.hidden = current <= 0;
+      nextBtn.hidden = current >= videos.length - 1;
+      var active = listEl.querySelector('.tut-item.active');
+      if (active && active.scrollIntoView) active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+    // A clip still coming back from Dropbox: ask again until it's ready.
+    function waitUntilReady(){
+      clearTimeout(retryTimer);
+      if (retries++ > 24) { setOverlay('This video isn’t available right now. Please try again later.'); return; }
+      retryTimer = setTimeout(function(){
+        fetchList().then(function(list){
+          var id = videos[current] && videos[current].id;
+          videos = list;
+          var index = videos.findIndex(function(v){ return v.id === id; });
+          if (index < 0) { if (videos.length) play(0); else showEmpty(); return; }
+          current = index;
+          if (videos[index].ready) play(index); else waitUntilReady();
+        }).catch(waitUntilReady);
+      }, 5000);
+    }
+    function play(index){
+      if (index < 0 || index >= videos.length) return;
+      clearTimeout(retryTimer);
+      if (index !== current) retries = 0;
+      current = index;
+      var video = videos[index];
+      titleEl.textContent = video.title;
+      descEl.textContent = video.description || '';
+      descEl.hidden = !video.description;
+      renderList();
+      player.poster = video.poster || '';
+      if (!video.ready) {
+        player.removeAttribute('src');
+        player.load();
+        setOverlay('Getting the video ready…');
+        waitUntilReady();
+        return;
+      }
+      setOverlay('');
+      player.src = video.src;
+      player.play().catch(function(){});
+    }
+    function showEmpty(){
+      titleEl.textContent = 'No tutorials yet';
+      countEl.textContent = '';
+      descEl.hidden = true;
+      listEl.innerHTML = '';
+      prevBtn.hidden = nextBtn.hidden = true;
+      setOverlay('');
+      player.removeAttribute('poster');
+      overlay.hidden = false;
+      overlay.innerHTML = '<div class="tut-empty"><i class="fas fa-circle-play"></i><span>New how-to videos will appear here soon.</span></div>';
+    }
+    function open(){
+      if (accountMenuWrap) accountMenuWrap.classList.remove('open');
+      if (accountMenuBtn) accountMenuBtn.setAttribute('aria-expanded', 'false');
+      modal.hidden = false;
+      backdrop.hidden = false;
+      overlay.innerHTML = '<span class="aw-orbit"></span><span id="tutOverlayText"></span>';
+      overlayText = document.getElementById('tutOverlayText');
+      titleEl.textContent = 'Loading…';
+      setOverlay('Loading the tutorials…');
+      retries = 0;
+      document.getElementById('tutClose').focus();
+      fetchList().then(function(list){
+        videos = list;
+        current = -1;
+        if (!videos.length) { showEmpty(); return; }
+        play(0);
+      }).catch(function(error){ titleEl.textContent = 'Video tutorials'; setOverlay(error.message); });
+    }
+    function close(){
+      stop();
+      modal.hidden = true;
+      backdrop.hidden = true;
+    }
+
+    if (menuBtn) menuBtn.addEventListener('click', open);
+    backdrop.addEventListener('click', close);
+    document.getElementById('tutClose').addEventListener('click', close);
+    prevBtn.addEventListener('click', function(){ play(current - 1); });
+    nextBtn.addEventListener('click', function(){ play(current + 1); });
+    listEl.addEventListener('click', function(e){
+      var item = e.target.closest('[data-tut-index]');
+      if (item) play(Number(item.getAttribute('data-tut-index')));
+    });
+    // Watching only: no save/download menu on the player.
+    stage.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+    player.addEventListener('ended', function(){ if (current < videos.length - 1) play(current + 1); });
+    player.addEventListener('error', function(){
+      if (!player.getAttribute('src') || modal.hidden) return;
+      setOverlay('Getting the video ready…');
+      waitUntilReady();
+    });
+    document.addEventListener('keydown', function(e){
+      if (modal.hidden) return;
+      if (e.key === 'Escape') close();
+      else if (e.key === 'ArrowRight' && document.activeElement !== player) play(current + 1);
+      else if (e.key === 'ArrowLeft' && document.activeElement !== player) play(current - 1);
+    });
+    return { open: open };
+  })();
+
+  // ---- "How to use" and "Edit / create images": topics, Copy and Try it ----
   var GUIDE_COPY_LABELS = {
     idle: '<i class="fas fa-copy"></i>', done: '<i class="fas fa-check"></i>',
     fail: '<i class="fas fa-triangle-exclamation"></i>'
   };
-  function openGuide(){
-    if (!guideModal || !guideBackdrop) return;
-    guideModal.hidden = false;
-    guideBackdrop.hidden = false;
-    if (accountMenuWrap) accountMenuWrap.classList.remove('open');
-    if (accountMenuBtn) accountMenuBtn.setAttribute('aria-expanded', 'false');
-    var close = document.getElementById('guideClose');
-    if (close) close.focus();
-  }
-  function closeGuide(){
-    if (!guideModal || !guideBackdrop) return;
-    guideModal.hidden = true;
-    guideBackdrop.hidden = true;
-  }
-  var guideMenuBtn = document.getElementById('guideMenuBtn');
-  if (guideMenuBtn) guideMenuBtn.addEventListener('click', openGuide);
-  if (guideBackdrop) guideBackdrop.addEventListener('click', closeGuide);
-  if (guideModal) {
-    guideModal.addEventListener('click', function(e){
-      if (e.target.closest('#guideClose')) { closeGuide(); return; }
+  function promptModal(modalId, backdropId, bodyId, closeId, menuBtnId){
+    var modal = document.getElementById(modalId);
+    var backdrop = document.getElementById(backdropId);
+    var body = document.getElementById(bodyId);
+    if (!modal || !backdrop) return { open: function(){}, close: function(){} };
+    function open(){
+      modal.hidden = false;
+      backdrop.hidden = false;
+      if (accountMenuWrap) accountMenuWrap.classList.remove('open');
+      if (accountMenuBtn) accountMenuBtn.setAttribute('aria-expanded', 'false');
+      var closeBtn = document.getElementById(closeId);
+      if (closeBtn) closeBtn.focus();
+    }
+    function close(){
+      modal.hidden = true;
+      backdrop.hidden = true;
+    }
+    var menuBtn = document.getElementById(menuBtnId);
+    if (menuBtn) menuBtn.addEventListener('click', open);
+    backdrop.addEventListener('click', close);
+    modal.addEventListener('click', function(e){
+      if (e.target.closest('#' + closeId)) { close(); return; }
       var jump = e.target.closest('[data-guide-jump]');
       if (jump) {
         var target = document.getElementById(jump.getAttribute('data-guide-jump'));
-        guideModal.querySelectorAll('[data-guide-jump]').forEach(function(b){ b.classList.toggle('active', b === jump); });
-        if (target && guideBody) guideBody.scrollTop = target.offsetTop - guideBody.offsetTop;
+        modal.querySelectorAll('[data-guide-jump]').forEach(function(b){ b.classList.toggle('active', b === jump); });
+        if (target && body) body.scrollTop = target.offsetTop - body.offsetTop;
+        return;
+      }
+      if (e.target.closest('[data-guide-tutorials]')) {
+        close();
+        tutorials.open();
+        return;
+      }
+      if (e.target.closest('[data-guide-images]')) {
+        close();
+        var imagesBtn = document.getElementById('imageHelpMenuBtn');
+        if (imagesBtn) imagesBtn.click();
+        return;
+      }
+      var openPanel = e.target.closest('[data-guide-open]');
+      if (openPanel) {
+        close();
+        openAccountModal(openPanel.getAttribute('data-guide-open'));
         return;
       }
       var prompt = e.target.closest('.guide-prompt');
@@ -8942,18 +9866,24 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
       var copyBtn = e.target.closest('.guide-copy');
       if (copyBtn) { copyWithFeedback(copyBtn, text, GUIDE_COPY_LABELS); return; }
       if (!e.target.closest('.guide-try') || state.streaming || state.gated || state.conversationEnded) return;
-      closeGuide();
+      close();
       // A research example only makes sense with deep research switched on.
       if (prompt.getAttribute('data-research') === '1' && !state.research && researchBtn && !researchBtn.disabled) researchBtn.click();
       input.value = text;
       autoResize();
       input.focus();
       try { input.setSelectionRange(text.length, text.length); } catch (err) {}
+      // An edit example needs the person's own picture: open the file picker
+      // unless one is already attached.
+      if (prompt.getAttribute('data-photo') === '1' && attachBtn && !attachBtn.disabled && !stagedImages.length) attachBtn.click();
     });
     document.addEventListener('keydown', function(e){
-      if (e.key === 'Escape' && !guideModal.hidden) closeGuide();
+      if (e.key === 'Escape' && !modal.hidden) close();
     });
+    return { open: open, close: close };
   }
+  promptModal('guideModal', 'guideBackdrop', 'guideBody', 'guideClose', 'guideMenuBtn');
+  promptModal('imgHelpModal', 'imgHelpBackdrop', 'imgHelpBody', 'imgHelpClose', 'imageHelpMenuBtn');
 
   // ---- superuser Maps: where users who shared their location are ----
   (function setupUserMap(){

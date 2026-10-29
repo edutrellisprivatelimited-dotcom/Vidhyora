@@ -24,9 +24,27 @@ SECRET_KEY = os.environ.get(
     'django-insecure-2!^^*c(t)whrn^4w3xkoqx!1p85e5s!-xh0w+xai7&q*80tt@@'
 )
 
-DEBUG = True
+# The live site (gunicorn, see Procfile, on Railway) never runs with DEBUG:
+# it turns off Django's developer pages, serves cookies over HTTPS only and
+# stops /media/ being served wholesale (see edutrellis/urls.py). A local
+# `manage.py runserver` and the test runner keep DEBUG. DJANGO_DEBUG=1 or 0
+# overrides.
+_debug_env = os.environ.get('DJANGO_DEBUG', '').strip()
+_on_live_server = (
+    os.path.basename(sys.argv[0] if sys.argv else '').startswith('gunicorn')
+    or bool(os.environ.get('RAILWAY_ENVIRONMENT'))
+)
+DEBUG = _debug_env == '1' if _debug_env in ('0', '1') else not _on_live_server
 
-ALLOWED_HOSTS = ['*']
+# The site's own domains; any other Host header is refused. DJANGO_ALLOWED_HOSTS
+# (comma-separated) replaces the list, e.g. when a new domain is added.
+_hosts_env = os.environ.get('DJANGO_ALLOWED_HOSTS', '').strip()
+ALLOWED_HOSTS = [h.strip() for h in _hosts_env.split(',') if h.strip()] if _hosts_env else [
+    'www.edutrellis.in', 'edutrellis.in',
+    'www.vidhyora.online', 'vidhyora.online','www.vidhyantra.online',
+    '.up.railway.app', 'healthcheck.railway.app',
+    'localhost', '127.0.0.1', '[::1]',
+]
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -116,8 +134,12 @@ SESSION_SAVE_EVERY_REQUEST = True
 GITHUB_OAUTH_CLIENT_ID = os.environ.get('GITHUB_OAUTH_CLIENT_ID', '')
 GITHUB_OAUTH_CLIENT_SECRET = os.environ.get('GITHUB_OAUTH_CLIENT_SECRET', '')
 
-SECURE_SSL_REDIRECT = not DEBUG
+# Railway's edge already redirects http:// to https://, so Django does not
+# (its redirect would also answer Railway's plain-http health check with a 301).
+SECURE_SSL_REDIRECT = False
 SESSION_COOKIE_SECURE = not DEBUG
+# Tells browsers to use HTTPS for this site for a year, even if a link says http://.
+SECURE_HSTS_SECONDS = 0 if DEBUG else 60 * 60 * 24 * 365
 CSRF_COOKIE_SECURE = not DEBUG
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 SECURE_BROWSER_XSS_FILTER = True
