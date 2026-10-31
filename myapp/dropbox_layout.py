@@ -1,11 +1,13 @@
 """Where everything this site keeps in Dropbox lives. One folder named after
-the AI (the name on the dashboard's Customize page):
+the AI (the name on the dashboard's Customize page), unless a different
+folder name is chosen on the Backup page:
 
     /<AI name>/Backups/                               database backups
     /<AI name>/AI Images/<email>/<YYYY-MM>/<file>.webp
     /<AI name>/Reports/<email>/<file>.webp            bug-report screenshots
 
-Renaming the AI moves the whole folder to the new name (sync_root). Before
+Renaming the AI (or the folder) moves the whole folder to the new name
+(sync_root). Before
 this layout, backups sat in "/EduTrellis Store/backups" beside another
 project's files, and images in "/vidhyora/<email>/"; sync_root brings this
 site's backups across once.
@@ -33,6 +35,11 @@ _OWN_BACKUP_RE = re.compile(r'^(?:[A-Za-z0-9-]+_(?:Auto-)?Backup_.+|(?:auto_)?ba
 _sync_lock = threading.Lock()
 
 
+def safe_name(text):
+    """Letters, digits and dashes only, at most 40 characters ('' if none)."""
+    return re.sub(r'[^A-Za-z0-9-]+', '-', text or '').strip('-')[:40].strip('-')
+
+
 def brand_name():
     """The AI name from the Customize page, safe for a file or folder name."""
     from myapp.models import SiteCustomization
@@ -40,12 +47,20 @@ def brand_name():
         brand = SiteCustomization.get_solo().ai_brand_name or ''
     except Exception:  # e.g. a restored database from before that setting existed
         brand = ''
-    brand = re.sub(r'[^A-Za-z0-9-]+', '-', brand).strip('-')[:40]
-    return brand or DEFAULT_BRAND
+    return safe_name(brand) or DEFAULT_BRAND
+
+
+def custom_folder():
+    """The folder name chosen on the Backup page, or '' to follow the AI name."""
+    from myapp.models import DropboxSettings
+    try:
+        return safe_name(DropboxSettings.get_solo().dropbox_folder)
+    except Exception:  # e.g. a database from before this setting existed
+        return ''
 
 
 def root():
-    return f'/{brand_name()}'
+    return f'/{custom_folder() or brand_name()}'
 
 
 def backups_folder():
@@ -102,7 +117,7 @@ def _move_backups(dbx, source_folder, target_folder):
 
 
 def sync_root(dbx):
-    """Make sure the Dropbox folder matches the AI's current name, and return
+    """Make sure the Dropbox folder matches its current name, and return
     it. The first time, this site's backups come out of the shared legacy
     folder; after a rename, the old folder moves to the new name."""
     from django.conf import settings
@@ -143,7 +158,7 @@ def sync_root(dbx):
                 StoredImage.objects.filter(dropbox_path__startswith=previous + '/').update(
                     dropbox_path=Concat(Value(current), Substr('dropbox_path', len(previous) + 1)),
                 )
-                logger.info('Moved the Dropbox folder %s to %s after the AI was renamed', previous, current)
+                logger.info('Moved the Dropbox folder %s to %s after it was renamed', previous, current)
             except Exception as exc:
                 if 'not_found' not in str(exc).lower():
                     # The new name is taken already (or the old folder is the

@@ -94,6 +94,7 @@ urlpatterns = [
 
     path('AI/manifest.json', views.ai_manifest, name='ai_manifest'),
     path('AI/pwa-icon/<int:size>.png', views.ai_pwa_icon, name='ai_pwa_icon'),
+    path('AI/app.apk', views.ai_app_apk, name='ai_app_apk'),
     path('AI/sw.js', views.pwa_service_worker, name='ai_service_worker'),
     path('AI/api/signup/', views.ai_signup, name='ai_signup'),
     path('AI/api/login/', views.ai_login, name='ai_login'),

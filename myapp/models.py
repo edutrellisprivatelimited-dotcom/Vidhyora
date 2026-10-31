@@ -444,6 +444,9 @@ class DropboxSettings(models.Model):
     # The Dropbox folder everything was last kept in ("/<AI name>"). When the
     # AI is renamed, myapp.dropbox_layout moves that folder to the new name.
     dropbox_root  = models.CharField(max_length=120, blank=True)
+    # A folder name chosen on the Backup page instead of the AI name. Blank =
+    # follow the AI name.
+    dropbox_folder = models.CharField(max_length=40, blank=True)
     updated_at    = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -487,6 +490,11 @@ class PWASettings(models.Model):
     icon              = models.ImageField(upload_to='pwa/', blank=True, null=True, help_text='Square logo, ideally 512×512px or larger — used as the installed app icon.')
     theme_color       = models.CharField(max_length=7, default='#e8001e', help_text='Hex color, e.g. #e8001e — used for the browser/app toolbar.')
     background_color  = models.CharField(max_length=7, default='#ffffff', help_text='Hex color shown behind the splash screen while the app loads.')
+    # The Android app offered next to the browser install. Kept outside the
+    # public media folders and served only through ai_app_apk.
+    apk_file          = models.FileField(upload_to='app_apk/', blank=True, help_text='Android app file (.apk) people can download from "Install app".')
+    apk_version       = models.CharField(max_length=30, blank=True, help_text='Optional, e.g. 1.2.0 — shown next to the download.')
+    apk_uploaded_at   = models.DateTimeField(null=True, blank=True)
     updated_at        = models.DateTimeField(auto_now=True)
 
     class Meta:

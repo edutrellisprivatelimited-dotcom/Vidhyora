@@ -11,7 +11,7 @@
 {% if saved %}<div class="save-msg"><i class="fas fa-circle-check"></i> Saved.</div>{% endif %}
 
 <form class="form-card" style="max-width:640px" method="post" enctype="multipart/form-data">
-  {% csrf_token %}
+  {% csrf_token %}<input type="hidden" name="section" value="pwa">
 
   <div class="toggle-row">
     <div><b>Enable installation on the homepage</b><span>A default app icon is used when no custom logo is uploaded.</span></div>
@@ -68,6 +68,51 @@
 
   <div class="form-actions">
     <button type="submit" class="btn btn-primary"><i class="fas fa-check"></i> Save settings</button>
+  </div>
+</form>
+
+<h3 id="android-app" style="margin:2rem 0 .4rem;font-size:1.05rem;color:var(--head)"><i class="fab fa-android"></i> Android app (APK)</h3>
+<p class="backup-sub" style="color:var(--text);font-size:.88rem;margin:0 0 1rem">
+  When an app file is uploaded, "Install app" on the AI page offers two choices: download this Android app, or install from the browser.
+  To release an update, upload the new .apk here — it replaces the old one, and the download link stays the same.
+</p>
+
+{% if apk_saved %}<div class="save-msg"><i class="fas fa-circle-check"></i> Android app saved.</div>{% endif %}
+{% if apk_removed %}<div class="save-msg"><i class="fas fa-circle-check"></i> Android app removed. "Install app" now offers only the browser install.</div>{% endif %}
+
+<form class="form-card" style="max-width:640px" method="post" enctype="multipart/form-data">
+  {% csrf_token %}<input type="hidden" name="section" value="apk">
+
+  {% if settings_obj.apk_file %}
+  <div class="current-thumb" style="align-items:flex-start">
+    <i class="fab fa-android" style="font-size:2rem;color:#3ddc84"></i>
+    <span class="help">
+      <b>Current app{% if settings_obj.apk_version %} — version {{ settings_obj.apk_version }}{% endif %}</b><br>
+      {% if settings_obj.apk_file.size %}{{ settings_obj.apk_file.size|filesizeformat }}{% endif %}{% if settings_obj.apk_uploaded_at %} · uploaded {{ settings_obj.apk_uploaded_at|date:"d M Y, h:i A" }}{% endif %}<br>
+      Download link: <a href="{{ apk_download_url }}">{{ request.scheme }}://{{ request.get_host }}{{ apk_download_url }}</a>
+    </span>
+  </div>
+  {% endif %}
+
+  <div class="form-group" style="margin-top:1rem">
+    <label for="{{ apk_form.apk_file.id_for_label }}">{% if settings_obj.apk_file %}Upload a new version{% else %}App file (.apk){% endif %}</label>
+    {{ apk_form.apk_file }}
+    <div class="help">{% if settings_obj.apk_file %}Leave empty to keep the current app and only change the version below. {% endif %}Up to 200 MB.</div>
+    {{ apk_form.apk_file.errors }}
+  </div>
+
+  <div class="form-group">
+    <label for="{{ apk_form.apk_version.id_for_label }}">Version (optional)</label>
+    {{ apk_form.apk_version }}
+    <div class="help">For example 1.2.0. Shown in the install pop-up and used in the downloaded file name.</div>
+    {{ apk_form.apk_version.errors }}
+  </div>
+
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary"><i class="fas fa-upload"></i> {% if settings_obj.apk_file %}Save app{% else %}Upload app{% endif %}</button>
+    {% if settings_obj.apk_file %}
+    <button type="submit" name="section" value="apk_remove" class="btn btn-ghost" formnovalidate onclick="return confirm('Remove the Android app? People will only see the browser install.');"><i class="fas fa-trash"></i> Remove app</button>
+    {% endif %}
   </div>
 </form>
 {% endblock %}

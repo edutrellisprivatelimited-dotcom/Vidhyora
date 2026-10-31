@@ -73,6 +73,9 @@
 .dbx-source{font-weight:600;font-size:.7rem;color:#9aa3b0;margin-left:.35rem}
 .dbx-actions{display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-top:1rem}
 .dbx-inline-form{display:inline}
+.dbx-folder-form{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.5rem}
+.dbx-folder-form input{flex:1 1 10rem;min-width:0;padding:.4rem .6rem;border:1px solid var(--line);border-radius:8px;font-size:.85rem}
+.dbx-folder-form .btn{padding:.4rem .8rem;font-size:.82rem}
 .dbx-note{font-size:.74rem;color:#9aa3b0;margin-top:.9rem;line-height:1.5}
 .dbx-steps{margin:0 0 1.1rem;padding:.8rem 1rem .8rem 2rem;background:#f3f6ff;border:1px solid #d7e0ff;border-radius:12px;font-size:.8rem;line-height:1.55;color:var(--text)}
 .dbx-steps li{margin:.15rem 0}
@@ -137,7 +140,12 @@ a.btn[aria-disabled="true"]{opacity:.5;pointer-events:none}
       <ul class="dbx-facts">
         <li><i class="fas fa-folder-open"></i> <span>Dropbox folder: <b>{{ dropbox_root }}/</b>
           <span class="dbx-tree">{% for sub in dropbox_subfolders %}<code>{{ sub }}/</code>{% endfor %}</span>
-          <small class="dbx-tree-note">Named after the AI name on the Customize page. Renaming the AI moves the folder too.</small></span></li>
+          <small class="dbx-tree-note">{% if settings_obj.dropbox_folder %}A folder name you chose. Clear the box to name it after the AI again.{% else %}Named after the AI name on the Customize page. Renaming the AI moves the folder too.{% endif %}</small>
+          <form method="post" action="{% url 'dashboard_backup_settings' %}" class="dbx-folder-form">
+            {% csrf_token %}<input type="hidden" name="action" value="folder">
+            <input type="text" name="dropbox_folder" value="{{ settings_obj.dropbox_folder }}" placeholder="{{ dropbox_brand }}" maxlength="40" pattern="[A-Za-z0-9 _\-]*" title="Letters, numbers, spaces or dashes" aria-label="Dropbox folder name" spellcheck="false" autocomplete="off">
+            <button type="submit" class="btn btn-ghost" onclick="return confirm('Move everything in Dropbox to this folder name?');"><i class="fas fa-pen"></i> Change folder</button>
+          </form></span></li>
         <li><i class="fas fa-images"></i> <span>AI images in Dropbox: <b>{{ image_summary.in_dropbox }}</b>{% if image_summary.waiting %} · {{ image_summary.waiting }} uploading{% endif %}{% if image_summary.older %} · {{ image_summary.older }} older ones being moved{% endif %}
           <small class="dbx-tree-note">Saved as compressed WebP. People see and download them from this site; Dropbox links are never shown.</small></span></li>
         {% if connected and account.allocated and account.used is not None %}

@@ -302,6 +302,38 @@ class PWASettingsForm(forms.ModelForm):
         }
 
 
+APK_MAX_BYTES = 200 * 1024 * 1024
+
+
+class AppApkForm(forms.ModelForm):
+    """Upload or replace the Android app offered under "Install app"."""
+    class Meta:
+        model = PWASettings
+        fields = ['apk_file', 'apk_version']
+        # A plain file box: removing the app is its own button on the page.
+        widgets = {'apk_file': forms.FileInput(attrs={'accept': '.apk,application/vnd.android.package-archive'})}
+
+    def clean_apk_file(self):
+        upload = self.cleaned_data.get('apk_file')
+        if 'apk_file' not in self.files:
+            if not upload:
+                raise forms.ValidationError('Choose the app file (.apk) to upload.')
+            return upload  # nothing new chosen: keep the current app
+        if not upload.name.lower().endswith('.apk'):
+            raise forms.ValidationError('This is not an Android app file. Choose a file that ends in .apk.')
+        if upload.size > APK_MAX_BYTES:
+            raise forms.ValidationError('This file is too big. The app file can be at most 200 MB.')
+        # An APK is a zip archive, which always starts with "PK".
+        head = upload.read(2)
+        upload.seek(0)
+        if head != b'PK':
+            raise forms.ValidationError('This file is damaged or is not a real Android app. Build the APK again and upload it.')
+        return upload
+
+    def clean_apk_version(self):
+        return self.cleaned_data['apk_version'].strip()
+
+
 class SiteCustomizationForm(forms.ModelForm):
     class Meta:
         model = SiteCustomization

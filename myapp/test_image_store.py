@@ -262,6 +262,16 @@ class FolderLayoutTests(StoreTestCase):
         image.refresh_from_db()
         self.assertEqual(image.dropbox_path, '/Study-Buddy/AI Images/a/2026-10/x.webp')
 
+    def test_a_chosen_folder_name_wins_over_the_ai_name_and_moves_the_folder(self):
+        image = StoredImage.objects.create(local_name='x.webp', dropbox_path='/Vidhyantra/AI Images/a/x.webp')
+        DropboxSettings.objects.filter(pk=1).update(dropbox_folder='My Files')
+        dbx = Mock()
+        self.assertEqual(dropbox_layout.sync_root(dbx), '/My-Files')
+        dbx.files_move_v2.assert_called_once_with('/Vidhyantra', '/My-Files')
+        image.refresh_from_db()
+        self.assertEqual(image.dropbox_path, '/My-Files/AI Images/a/x.webp')
+        self.assertEqual(dropbox_layout.brand_name(), 'Vidhyantra')  # backup file names keep the AI name
+
     def test_a_local_copy_of_the_site_never_moves_anything(self):
         DropboxSettings.objects.filter(pk=1).update(dropbox_root='')
         dbx = Mock()

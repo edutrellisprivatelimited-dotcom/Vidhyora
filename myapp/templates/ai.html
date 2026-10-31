@@ -994,6 +994,7 @@ mark.find-hit.current{background:#f59e0b;color:#111}
 .export-all-option>i{font-size:1.25rem;color:var(--red);width:24px;text-align:center;flex-shrink:0}
 .export-all-option b{display:block;font-size:.86rem}
 .export-all-option small{display:block;font-size:.72rem;color:#9aa3b0;margin-top:.1rem}
+a.export-all-option{text-decoration:none;box-sizing:border-box}
 
 /* ---- sidebar Chats/My Notes tabs + note cards (Google-Keep style) ---- */
 .sidebar-tabs{display:flex;gap:2px;margin:.45rem .9rem 0;padding:3px;border:1px solid var(--line);border-radius:11px;background:var(--surface)}
@@ -1865,7 +1866,10 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
   /* anchored left, not right — the button sits at the left edge of the
      composer, so the dropdown must grow rightward to stay on-screen */
   .model-dropdown{position:fixed;top:50%;left:24px;right:24px;bottom:auto;transform:translateY(-50%);width:auto;max-width:340px;margin:0 auto;min-width:0;max-height:min(65vh,420px);max-height:min(65dvh,420px);overscroll-behavior:contain;z-index:47}
-  .input-wrap{gap:.3rem}
+  /* No labels fit on a phone (see fitComposer), so spread the icons across
+     the toolbar row instead of leaving a gap before the send button. */
+  .input-wrap{gap:.3rem;justify-content:space-between}
+  #sendBtn{margin-left:0}
   .mic-btn,.github-btn,.search-btn{width:30px;height:30px;font-size:.85rem}
   /* a lower cap than desktop's 140px — on a short phone screen, letting the
      composer grow that tall ate too much of the visible chat area and felt
@@ -2373,7 +2377,7 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
               <button type="button" class="acct-menu-item" data-account-panel="themes" role="menuitem"><i class="fas fa-wand-magic-sparkles"></i> Themes</button>
               <button type="button" class="acct-menu-item" data-account-panel="api" role="menuitem"><i class="fas fa-key"></i> Get API</button>
               <button type="button" class="acct-menu-item" data-account-panel="coding" role="menuitem"><i class="fas fa-terminal"></i> Code-X</button>
-              {% if ai_pwa_ready %}<button type="button" class="acct-menu-item" id="installAppMenuBtn" role="menuitem"><i class="fas fa-mobile-screen-button"></i> Install app</button>{% endif %}
+              {% if ai_pwa_ready or ai_apk_ready %}<button type="button" class="acct-menu-item" id="installAppMenuBtn" role="menuitem"><i class="fas fa-mobile-screen-button"></i> Install app</button>{% endif %}
               <button type="button" class="acct-menu-item" id="guideMenuBtn" role="menuitem"><i class="fas fa-circle-question"></i> How to use</button>
               <button type="button" class="acct-menu-item" id="tutorialsMenuBtn" role="menuitem"><i class="fas fa-circle-play"></i> Video tutorials</button>
               <button type="button" class="acct-menu-item" id="imageHelpMenuBtn" role="menuitem"><i class="fas fa-image"></i> Edit / create images</button>
@@ -2405,6 +2409,30 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
   <span class="install-banner-text">Install {{ ai_pwa.app_name }} as an app for quicker access.</span>
   <button type="button" class="install-banner-btn" id="installBannerBtn">Install</button>
   <button type="button" class="install-banner-close" id="installBannerClose" aria-label="Dismiss"><i class="fas fa-xmark"></i></button>
+</div>
+{% endif %}
+
+{% if ai_pwa_ready or ai_apk_ready %}
+<div class="feature-modal-backdrop" id="installAppBackdrop" hidden></div>
+<div class="feature-modal" id="installAppModal" hidden role="dialog" aria-modal="true" aria-label="Install app">
+  <button type="button" class="feature-modal-close" id="installAppClose" aria-label="Dismiss"><i class="fas fa-xmark"></i></button>
+  <p class="feature-modal-title">Install {{ ai_pwa.app_name }}</p>
+  <p class="convert-hint">Pick how you want to install it.</p>
+  <div class="export-all-options">
+    {% if ai_apk_ready %}
+    <a class="export-all-option" id="installApkOption" href="{% url 'ai_app_apk' %}" download>
+      <i class="fab fa-android"></i>
+      <span><b>Android app (APK){% if ai_pwa.apk_version %} · v{{ ai_pwa.apk_version }}{% endif %}</b><small>Download and open the file. If your phone asks, allow installing apps from your browser.</small></span>
+    </a>
+    {% endif %}
+    {% if ai_pwa_ready %}
+    <button type="button" class="export-all-option" id="installPwaOption">
+      <i class="fas fa-globe"></i>
+      <span><b>Install from browser (PWA)</b><small>No download needed. Works on Android, iPhone and computers, and updates by itself.</small></span>
+    </button>
+    {% endif %}
+  </div>
+  <p class="convert-note" id="installAppNote" hidden></p>
 </div>
 {% endif %}
 
@@ -2931,7 +2959,7 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
         <li><b>My reports</b> — answers you reported and what we did about them.</li>
         <li><b>Export all chats</b> — download every chat as one PDF or text file. To save just one chat, press the <b>download</b> icon next to it in the sidebar.</li>
         <li><b>Find things fast</b> — search all chats from the box at the top of the sidebar, or press <b>Ctrl + Shift + F</b> to find words in the open chat.</li>
-        {% if ai_pwa_ready %}<li><b>Install app</b> — put {{ SITE_AI_BRAND_NAME }} AI on your phone or computer like a normal app.</li>{% endif %}
+        {% if ai_pwa_ready or ai_apk_ready %}<li><b>Install app</b> — put {{ SITE_AI_BRAND_NAME }} AI on your phone or computer like a normal app.</li>{% endif %}
         <li><b>Video tutorials</b> — short how-to videos you can watch right here.</li>
         <li><b>Support</b> — message us on WhatsApp or by email.</li>
       </ul>
@@ -6314,6 +6342,40 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
   })();
 
   // ---- install as an app ----
+  var startPwaInstall = null;
+  {% if ai_pwa_ready or ai_apk_ready %}
+  // "Install app" opens a choice: the Android app file and/or the browser install.
+  (function setupInstallChoice(){
+    var modal = document.getElementById('installAppModal');
+    var backdrop = document.getElementById('installAppBackdrop');
+    var closeBtn = document.getElementById('installAppClose');
+    var note = document.getElementById('installAppNote');
+    var pwaOption = document.getElementById('installPwaOption');
+    var apkOption = document.getElementById('installApkOption');
+    if (!installAppMenuBtn || !modal) return;
+    function setNote(text){ note.textContent = text || ''; note.hidden = !text; }
+    function open(){
+      if (accountMenuWrap) accountMenuWrap.classList.remove('open');
+      if (accountMenuBtn) accountMenuBtn.setAttribute('aria-expanded', 'false');
+      setNote('');
+      modal.hidden = false; backdrop.hidden = false;
+    }
+    function close(){ modal.hidden = true; backdrop.hidden = true; setNote(''); }
+    installAppMenuBtn.addEventListener('click', open);
+    if (closeBtn) closeBtn.addEventListener('click', close);
+    backdrop.addEventListener('click', close);
+    document.addEventListener('keydown', function(e){
+      if (e.key === 'Escape' && !modal.hidden) close();
+    });
+    if (pwaOption) pwaOption.addEventListener('click', function(){
+      var message = startPwaInstall ? startPwaInstall() : '';
+      if (message) setNote(message); else close();
+    });
+    if (apkOption) apkOption.addEventListener('click', function(){
+      setNote('Downloading… When it finishes, open the file to install the app.');
+    });
+  })();
+  {% endif %}
   {% if ai_pwa_ready %}
   (function setupInstallPrompt(){
     if ('serviceWorker' in navigator) {
@@ -6351,20 +6413,15 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
       deferredPrompt.prompt();
       deferredPrompt.userChoice.finally(function(){ deferredPrompt = null; banner.hidden = true; });
     });
-    if (installAppMenuBtn) installAppMenuBtn.addEventListener('click', function(){
-      if (accountMenuWrap) accountMenuWrap.classList.remove('open');
-      if (accountMenuBtn) accountMenuBtn.setAttribute('aria-expanded', 'false');
-      if (installed) {
-        alert('{{ ai_pwa.app_name|escapejs }} is already installed.');
-        return;
-      }
-      if (!deferredPrompt) {
-        alert('Open your browser menu and choose "Install app" or "Add to Home screen".');
-        return;
-      }
+    // Used by the "Install app" pop-up; returns a note to show, or '' once
+    // the browser's own install prompt has opened.
+    startPwaInstall = function(){
+      if (installed) return '{{ ai_pwa.app_name|escapejs }} is already installed on this device.';
+      if (!deferredPrompt) return 'Open your browser menu and choose "Install app" or "Add to Home screen". On iPhone, tap Share, then "Add to Home Screen".';
       deferredPrompt.prompt();
       deferredPrompt.userChoice.finally(function(){ deferredPrompt = null; banner.hidden = true; });
-    });
+      return '';
+    };
     if (closeBtn) closeBtn.addEventListener('click', function(){
       banner.hidden = true;
       localStorage.setItem(dismissedKey, '1');
@@ -9416,7 +9473,9 @@ footer{flex:none;border-top:1px solid var(--line);background:var(--surface);padd
       '<li><strong>What is sent:</strong> your messages and the file contents OpenCode reads for a task are sent to ' + escHtml(coding.brand) + ' to produce the answer. Don’t point it at folders holding secrets.</li>' +
       '<li><strong>What is recorded:</strong> ' + escHtml(coding.brand) + ' administrators can see which accounts use OpenCode and, for monitoring and support, the requests and replies of each session.</li>' +
       '<li><strong>Limits:</strong> up to ' + escHtml(String(coding.limits.per_minute)) + ' requests a minute and ' + escHtml(String(coding.limits.per_day)) + ' a day per key.</li>' +
-      '<li><strong>“Invalid API key”:</strong> the key was regenerated or revoked — create a new one and run <code>opencode auth login</code> again.</li>' +
+      (coding.manual_enabled
+        ? '<li><strong>“Invalid API key”:</strong> the key was regenerated or revoked — create a new one and run <code>opencode auth login</code> again.</li>'
+        : '<li><strong>“Invalid API key” or “not connected”:</strong> this computer’s connection was removed, or a different key was pasted in by hand (the Get API key, starting <code>vdk_</code>, does not work here). Run the one-command setup above again.</li>') +
       '<li><strong>“Model not found”:</strong> the model ID in <code>opencode.json</code> must be <code>' + escHtml(coding.model.id) + '</code> and the provider ID <code>vidhyora</code>.</li>' +
       '<li><strong>Conversation too long:</strong> start a new session or use <code>/compact</code>.</li>' +
       '<li><strong>Still stuck?</strong> Contact the administrator at ' + escHtml(coding.support_email) + '.</li></ul>';

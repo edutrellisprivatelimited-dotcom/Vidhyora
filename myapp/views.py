@@ -30,7 +30,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.template.loader import render_to_string
 from django.urls import resolve, Resolver404, reverse
 from django.templatetags.static import static as static_url
-from django.http import JsonResponse, StreamingHttpResponse, FileResponse, HttpResponse
+from django.http import JsonResponse, StreamingHttpResponse, FileResponse, HttpResponse, Http404
 from django.contrib.sessions.backends.base import CreateError
 from django.core.files.base import ContentFile
 from django.core.cache import cache
@@ -43,7 +43,7 @@ from django.conf import settings
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from datetime import datetime, timedelta, timezone as dt_timezone
-from myapp.forms import PhoneVerifyForm, AILoginForm, SignupEditForm, AIProfileEditForm, AIPasswordChangeForm, PaymentSettingsForm, PWASettingsForm, GrantAISubscriptionForm, GrantAPIAccessForm, AddUserForm, SiteCustomizationForm, MAX_AMOUNT_PAID
+from myapp.forms import PhoneVerifyForm, AILoginForm, SignupEditForm, AIProfileEditForm, AIPasswordChangeForm, PaymentSettingsForm, PWASettingsForm, AppApkForm, GrantAISubscriptionForm, GrantAPIAccessForm, AddUserForm, SiteCustomizationForm, MAX_AMOUNT_PAID
 from myapp.models import ContactSubmission, StoreProfile, Order, OrderItem, PaymentSettings, Payment, DropboxSettings, PhoneVerification, PWASettings, SiteCustomization, AIAccountMessageSettings, AIConversation, AIMessage, AIBlock, AINote, AIReport, AIGeneratedFile, AIUserImage, GitHubConnection, YouTubeDownloadJob, AIAPIAccess, AIAPIKey, AIAPIRequest, ProviderAPICredential, AIVideoJob
 from myapp import dropbox_backup
 from myapp import dropbox_images
@@ -1162,6 +1162,7 @@ def _api_account_summary(user, api_access, api_key):
     }
 
 
+@csrf_exempt
 def custom_404(request, exception=None):
     # edutrellis/urls.py adds a catch-all pattern (matching every path, with
     # or without a trailing slash) so this view renders even with DEBUG=True.
@@ -1169,7 +1170,11 @@ def custom_404(request, exception=None):
     # Django's normal APPEND_SLASH redirect (which only fires when the
     # un-slashed path doesn't resolve to anything). Reimplement that check
     # here against myapp.urls directly (which has no catch-all).
+    # It is CSRF-exempt so a POST to a wrong address gets this "not found"
+    # rather than a 403 that tools such as Hermes read as a rejected key.
     path = request.path
+    if path.startswith('/api/') and 'text/html' not in request.headers.get('Accept', ''):
+        return _api_not_found(request)
     # Only redirect safe methods — a 302 on POST/PUT/etc. gets turned into a
     # GET by the browser, silently dropping the request body.
     if request.method in ('GET', 'HEAD') and not path.endswith('/'):
@@ -1180,6 +1185,20 @@ def custom_404(request, exception=None):
         except Resolver404:
             pass
     return render(request, '404.html', status=404)
+
+
+def _api_not_found(request):
+    """A wrong /api/ address, in the OpenAI error shape so coding tools show
+    the message. The usual case is an OpenAI-style tool pointed at /api/v1,
+    which then calls /api/v1/chat/completions."""
+    base = f'{request.scheme}://{request.get_host()}'
+    message = (
+        f'There is no API at {request.path}. For coding tools such as OpenCode, use Code-X: run the '
+        f'one-command setup under Code-X in your account (address {base}/api/v1/code, Code-X key only). '
+        f'The Get API (vdk_ key) is not OpenAI-compatible: send POST requests to {base}/api/v1/chat/.'
+    )
+    return JsonResponse({'error': {'message': message, 'type': 'invalid_request_error', 'code': 'not_found'}},
+                        status=404)
 
 
 def _dashboard_guard(request):
@@ -2554,14 +2573,37 @@ def dashboard_email_settings_test(request):
 @dashboard_staff_required
 def dashboard_pwa_settings(request):
     settings_obj = PWASettings.get_solo()
-    form = PWASettingsForm(request.POST or None, request.FILES or None, instance=settings_obj)
-    saved = False
-    if request.method == 'POST' and form.is_valid():
+    section = request.POST.get('section', 'pwa') if request.method == 'POST' else None
+    form = PWASettingsForm(request.POST if section == 'pwa' else None,
+                           request.FILES if section == 'pwa' else None, instance=settings_obj)
+    apk_form = AppApkForm(request.POST if section == 'apk' else None,
+                          request.FILES if section == 'apk' else None, instance=settings_obj)
+    saved = apk_saved = apk_removed = False
+    if section == 'pwa' and form.is_valid():
         form.save()
         saved = True
         form = PWASettingsForm(instance=settings_obj)
+    elif section == 'apk_remove':
+        if settings_obj.apk_file:
+            settings_obj.apk_file.delete(save=False)
+        settings_obj.apk_version = ''
+        settings_obj.apk_uploaded_at = None
+        settings_obj.save()
+        apk_removed = True
+    elif section == 'apk':
+        old_file = settings_obj.apk_file.name  # read before is_valid() fills in the new one
+        if apk_form.is_valid():
+            if 'apk_file' in request.FILES:
+                settings_obj.apk_uploaded_at = timezone.now()
+            apk_form.save()
+            if old_file and old_file != settings_obj.apk_file.name:
+                settings_obj.apk_file.storage.delete(old_file)  # the replaced version
+            apk_saved = True
+            apk_form = AppApkForm(instance=settings_obj)
     return render(request, 'dashboard/pwa_settings.html', {
-        'active': 'pwa_settings', 'form': form, 'settings_obj': settings_obj, 'saved': saved,
+        'active': 'pwa_settings', 'form': form, 'apk_form': apk_form, 'settings_obj': settings_obj,
+        'saved': saved, 'apk_saved': apk_saved, 'apk_removed': apk_removed,
+        'apk_download_url': reverse('ai_app_apk'),
     })
 
 
@@ -2721,6 +2763,7 @@ def dashboard_backup(request):
         'list_error': list_error, 'dropbox_installed': installed,
         'backup_folder': dropbox_backup.backup_folder(),
         'dropbox_root': dropbox_layout.root(),
+        'dropbox_brand': dropbox_layout.brand_name(),
         'dropbox_subfolders': (dropbox_layout.BACKUPS, dropbox_layout.IMAGES, dropbox_layout.REPORTS),
         'image_summary': image_store.summary(),
         'account': account, 'account_error': account_error,
@@ -2755,6 +2798,33 @@ def dashboard_backup_settings(request):
             messages.success(request, 'Automatic backup is on. A backup is saved to Dropbox every 24 hours, and each one replaces the previous automatic backup.')
         else:
             messages.success(request, 'Automatic backup is off. Your existing backups are kept. You can still use "Backup Now".')
+        return redirect('dashboard_backup')
+
+    if action == 'folder':
+        typed = request.POST.get('dropbox_folder', '').strip()
+        name = dropbox_layout.safe_name(typed)
+        if typed and not name:
+            messages.error(request, 'Nothing was changed. Use letters, numbers or dashes for the folder name.')
+            return redirect('dashboard_backup')
+        old_root = dropbox_layout.root()
+        settings_obj.dropbox_folder = name
+        settings_obj.save(update_fields=['dropbox_folder', 'updated_at'])
+        new_root = dropbox_layout.root()
+        if new_root == old_root:
+            messages.success(request, f'The Dropbox folder is still {new_root}/.')
+            return redirect('dashboard_backup')
+        dropbox_backup.forget_listing(settings_obj)
+        moved_now = False
+        if settings_obj.is_configured and settings.DROPBOX_AUTO_BACKUP_ENABLED:
+            try:
+                dropbox_layout.sync_root(dropbox_backup._client(settings_obj))
+                moved_now = True
+            except Exception:
+                logger.warning('Could not move the Dropbox folder to %s right away', new_root, exc_info=True)
+        if moved_now:
+            messages.success(request, f'Dropbox folder changed to {new_root}/. Your backups and images were moved there.')
+        else:
+            messages.success(request, f'Dropbox folder changed to {new_root}/. Existing files move there with the next backup.')
         return redirect('dashboard_backup')
 
     if action == 'reset':
@@ -3807,6 +3877,24 @@ def ai_manifest(request):
     return response
 
 
+def ai_app_apk(request):
+    """The Android app uploaded on the dashboard's PWA / Install App page."""
+    pwa = PWASettings.get_solo()
+    if not pwa.apk_file:
+        raise Http404
+    try:
+        handle = pwa.apk_file.open('rb')
+    except (FileNotFoundError, OSError):
+        raise Http404
+    name = re.sub(r'[^A-Za-z0-9-]+', '-', pwa.short_name or pwa.app_name or 'app').strip('-') or 'app'
+    if pwa.apk_version:
+        name += '-' + re.sub(r'[^A-Za-z0-9.-]+', '-', pwa.apk_version).strip('-')
+    response = FileResponse(handle, content_type='application/vnd.android.package-archive',
+                            as_attachment=True, filename=f'{name}.apk')
+    response['Cache-Control'] = 'no-cache'
+    return response
+
+
 def ai_pwa_icon(request, size):
     """Serve the uploaded admin icon at real manifest-required dimensions."""
     if size not in (192, 512):
@@ -3934,6 +4022,7 @@ def ai_page(request):
         'ai_pwa': pwa,
         'ai_pwa_ready': pwa.ready,
         'ai_pwa_version': pwa_version,
+        'ai_apk_ready': bool(pwa.apk_file),
     })
 
 

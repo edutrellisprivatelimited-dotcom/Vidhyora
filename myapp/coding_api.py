@@ -119,8 +119,11 @@ def _contact_clause():
     return f'contact the administrator at {_support_email()}.'
 
 
+MODEL_LABEL = 'Code-X'               # the name users see in OpenCode and messages
+
+
 def _label():
-    return ai_chat.MODELS[UPSTREAM_MODEL_KEY]['label']
+    return MODEL_LABEL
 
 
 def _scrub(text):
@@ -165,11 +168,17 @@ def _authenticate(request):
     raw_key = header[7:] if header.lower().startswith('bearer ') else ''
     key = AICodingKey.resolve(raw_key)
     if not key or not key.user.is_active:
-        return None, _error(
-            'Invalid or missing API key. Create one under Code-X in your Vidhyora account '
-            'and sign in again with `opencode auth login`.',
-            401, kind='authentication_error', code='invalid_api_key',
-        )
+        if raw_key.strip().startswith('vdk_'):
+            # The Get API key, pasted where the Code-X key belongs.
+            message = ('This is your Get API key (it starts with vdk_), which does not work with Code-X. '
+                       'Run the one-command setup under Code-X in your Vidhyora account to connect this computer.')
+        elif MANUAL_SETUP_ENABLED:
+            message = ('Invalid or missing API key. Create one under Code-X in your Vidhyora account '
+                       'and sign in again with `opencode auth login`.')
+        else:
+            message = ('This computer is not connected to Code-X, or its connection was removed. '
+                       'Run the one-command setup under Code-X in your Vidhyora account again.')
+        return None, _error(message, 401, kind='authentication_error', code='invalid_api_key')
     if not key.label and not MANUAL_SETUP_ENABLED:
         return None, _error(
             'Manual keys are switched off. Connect this computer with the one-command setup under '
@@ -298,7 +307,7 @@ def clean_messages(raw):
             message['tool_call_id'] = item['tool_call_id']
         cleaned.append(message)
     if total > MAX_PROMPT_CHARS:
-        raise BadRequest('This conversation is too long for Vidhyora Code. Start a new session or compact it.')
+        raise BadRequest(f'This conversation is too long for {_label()}. Start a new session or compact it.')
     return cleaned
 
 

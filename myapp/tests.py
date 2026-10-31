@@ -4241,6 +4241,63 @@ class PWAFrontendSettingsTests(TestCase):
         self.assertContains(homepage, '<meta property="og:url" content="https://vidhyora.online/">', html=True)
         self.assertContains(homepage, 'https://vidhyora.online/media/branding/social/whatsapp-preview')
 
+    APK_BYTES = b'PK\x03\x04' + b'\x00' * 64
+
+    def _upload_apk(self, content=APK_BYTES, name='app-release.apk', version='1.2.0'):
+        return self.client.post('/store/dashboard/pwa-settings/', {
+            'section': 'apk', 'apk_version': version,
+            'apk_file': SimpleUploadedFile(name, content, content_type='application/vnd.android.package-archive'),
+        })
+
+    def test_install_app_offers_the_apk_and_the_browser_install(self):
+        self._save_enabled_settings()
+        saved = self._upload_apk()
+        self.assertTrue(saved.context['apk_saved'])
+        self.assertContains(saved, 'version 1.2.0')
+        self.assertTrue(PWASettings.get_solo().is_enabled)  # the PWA settings are left alone
+
+        homepage = self.client.get('/')
+        self.assertContains(homepage, 'id="installAppMenuBtn"')
+        self.assertContains(homepage, 'id="installAppModal"')
+        self.assertContains(homepage, 'id="installApkOption" href="/AI/app.apk"')
+        self.assertContains(homepage, 'Android app (APK) · v1.2.0')
+        self.assertContains(homepage, 'id="installPwaOption"')
+
+        download = self.client.get('/AI/app.apk')
+        self.assertEqual(download.status_code, 200)
+        self.assertEqual(download['Content-Type'], 'application/vnd.android.package-archive')
+        self.assertIn('Rudra-AI-1.2.0.apk', download['Content-Disposition'])
+        self.assertEqual(b''.join(download.streaming_content), self.APK_BYTES)
+
+    def test_a_new_apk_replaces_the_old_file_and_remove_takes_it_away(self):
+        self._upload_apk(version='1.0')
+        first = PWASettings.get_solo().apk_file.path
+        self._upload_apk(content=self.APK_BYTES + b'v2', version='2.0')
+        pwa = PWASettings.get_solo()
+        self.assertFalse(Path(first).exists())
+        self.assertEqual(pwa.apk_version, '2.0')
+        self.assertIsNotNone(pwa.apk_uploaded_at)
+
+        removed = self.client.post('/store/dashboard/pwa-settings/', {'section': 'apk_remove'})
+        self.assertTrue(removed.context['apk_removed'])
+        self.assertFalse(PWASettings.get_solo().apk_file)
+        self.assertEqual(self.client.get('/AI/app.apk').status_code, 404)
+
+    def test_only_the_apk_is_offered_when_the_browser_install_is_off(self):
+        self._upload_apk()
+        homepage = self.client.get('/')
+        self.assertContains(homepage, 'id="installAppMenuBtn"')
+        self.assertContains(homepage, 'id="installApkOption"')
+        self.assertNotContains(homepage, 'id="installPwaOption"')
+        self.assertNotContains(homepage, "navigator.serviceWorker.register('/sw.js'")
+
+    def test_a_file_that_is_not_an_apk_is_refused(self):
+        response = self._upload_apk(name='notes.txt')
+        self.assertContains(response, 'Choose a file that ends in .apk')
+        response = self._upload_apk(content=b'not a zip')
+        self.assertContains(response, 'not a real Android app')
+        self.assertFalse(PWASettings.get_solo().apk_file)
+
     def test_disabling_pwa_removes_manifest_banner_and_registration(self):
         self._save_enabled_settings()
         disabled = self.client.post('/store/dashboard/pwa-settings/', {
@@ -5329,6 +5386,15 @@ class CodingApiTests(TestCase):
         other = AIAPIKey.generate_for(self.user)
         response = self._post({'messages': [{'role': 'user', 'content': 'hi'}]}, auth={'HTTP_AUTHORIZATION': f'Bearer {other}'})
         self.assertEqual(response.status_code, 401)
+        self.assertIn('Get API key', response.json()['error']['message'])
+
+    def test_an_openai_style_tool_on_the_wrong_address_gets_a_clear_404(self):
+        # Hermes and similar tools pointed at /api/v1 call /api/v1/chat/completions.
+        client = Client(enforce_csrf_checks=True)
+        response = client.post('/api/v1/chat/completions', data='{}', content_type='application/json',
+                               HTTP_AUTHORIZATION='Bearer vdk_x')
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('/api/v1/code', response.json()['error']['message'])
 
     def test_only_the_hash_of_the_key_is_stored(self):
         from .models import AICodingKey
@@ -5389,7 +5455,7 @@ class CodingApiTests(TestCase):
         system = kwargs['messages'][0]
         self.assertEqual(system['role'], 'system')
         self.assertTrue(system['content'].startswith('You are OpenCode.'))
-        self.assertIn('Vidhyora Code', system['content'])
+        self.assertIn('You are Code-X', system['content'])
         self.assertEqual(kwargs['messages'][2]['tool_calls'][0]['function']['arguments'], '{"path": "a.py"}')
         self.assertEqual(kwargs['messages'][3]['tool_call_id'], 'c1')
 
@@ -6091,6 +6157,22 @@ class DropboxStoragePanelTests(TestCase):
 
         self.client.post(self.SAVE, {'action': 'auto_on'})
         self.assertTrue(DropboxSettings.get_solo().auto_backup_enabled)
+
+    def test_the_dropbox_folder_can_be_renamed_and_set_back_to_the_ai_name(self):
+        from myapp import dropbox_layout
+        brand_root = dropbox_layout.root()
+        body = self.client.post(self.SAVE, {'action': 'folder', 'dropbox_folder': 'School Files'}, follow=True).content.decode()
+        self.assertEqual(DropboxSettings.get_solo().dropbox_folder, 'School-Files')
+        self.assertEqual(dropbox_layout.root(), '/School-Files')
+        self.assertIn('Dropbox folder changed to /School-Files/', body)
+        self.assertIn('/School-Files/</b>', body)
+
+        body = self.client.post(self.SAVE, {'action': 'folder', 'dropbox_folder': '***'}, follow=True).content.decode()
+        self.assertIn('Use letters, numbers or dashes', body)
+        self.assertEqual(DropboxSettings.get_solo().dropbox_folder, 'School-Files')
+
+        self.client.post(self.SAVE, {'action': 'folder', 'dropbox_folder': ''})
+        self.assertEqual(dropbox_layout.root(), brand_root)
 
     def test_saving_new_credentials_switches_the_account_and_the_backup_list(self):
         response = self._save(app_key='new-key', app_secret='new-secret', refresh_token='new-token')
