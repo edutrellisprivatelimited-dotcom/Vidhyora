@@ -528,9 +528,14 @@ MODELS = {
         'vision': False,
     },
     'vision': {
-        # Verified against this account after the previous vision worker
-        # became unavailable. VISION_CHECK_BUFFER_CHARS remains a safety net.
-        'id': 'meta/llama-3.2-11b-vision-instruct',
+        # Verified against this account on 2026-10-31, after
+        # meta/llama-3.2-11b-vision-instruct started returning 404 (every
+        # attached photo then failed). VISION_CHECK_BUFFER_CHARS remains a
+        # safety net.
+        'id': 'nvidia/nemotron-3.5-super-vl-120b-a12b',
+        # A thinking model: kept off so a photo is read in about a second
+        # and no reasoning leaks into the reply.
+        'extra_body': {'chat_template_kwargs': {'enable_thinking': False, 'force_nonempty_content': True}},
         'label': 'Vidhyora Vision',
         'description': 'Understands images — used automatically when you attach a photo.',
         'reasoning': False,
@@ -1978,6 +1983,7 @@ def describe_image_for_edit(source_image, timeout=25.0, deadline=None):
             max_tokens=600,
             stream=True,
             timeout=timeout,
+            extra_body=MODELS['vision'].get('extra_body'),
         ))
         started = time.perf_counter()
         text = ''
